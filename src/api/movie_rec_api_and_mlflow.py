@@ -2,6 +2,7 @@ from __future__ import annotations
 import logging
 import os
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, status, Query, Request
 from fastapi.responses import JSONResponse
@@ -10,8 +11,16 @@ from pydantic import BaseModel, Field
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Sequence, Tuple, Mapping, Iterable, Any, TypedDict
 
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
+
+import json
+import hashlib
+import platform
+
+import mlflow
 
 from scipy.sparse import coo_matrix, csr_matrix
 from implicit.als import AlternatingLeastSquares
@@ -30,6 +39,7 @@ from src.models.als_movie_rec import (
 )
 
 
+
 # _________________________________________________________________________________________________________
 # Helper functions
 # _________________________________________________________________________________________________________
@@ -46,6 +56,16 @@ def _model_ready() -> bool:
         model_state.mappings is not None and
         model_state.movie_id_dict is not None
     )
+
+def _sha256(path: str) -> str:
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return "unavailable"
 
 
 # _________________________________________________________________________________________________________
@@ -243,76 +263,142 @@ def train_endpoint(train_param: TrainRequest):
             detail=f"Failed to read CSVs: {e}"
             )
 
-    # Prepare rating data
-    train_csr, test_csr, mappings = prepare_data(
-        df=df_ratings,
-        pos_threshold= train_param.pos_threshold,
-    )
-
-    # Compute item-movie dict for quick lookup
-    movie_id_dict = build_movie_id_dict(df_movies)
-
-    # get popular items for the case that a new user occurs that havent watched any movies by now.
-    popular_item_ids = get_popular_items(
-        df=df_ratings,
-        top_n=train_param.n_popular_movies,
-        threshold=train_param.pos_threshold)
-    print(f"\nShape of popular_item_ids is {len(popular_item_ids)}")
-
-    # Grid search
-    _ , metrics_ls, parameter_ls, best_idx = als_grid_search(
-        train_csr=train_csr,
-        test_csr=test_csr,
-        bm25_K1_list=train_param.als_parameter.bm25_K1_list,
-        bm25_B_list=train_param.als_parameter.bm25_B_list,
-        factors_list=train_param.als_parameter.factors_list,
-        reg_list=train_param.als_parameter.reg_list,
-        iters_list=train_param.als_parameter.iters_list
-    )
-
-    # Retrain model on whole data
-    # Build complete data in csr 
-    complete_data_csr = train_csr + test_csr
     
-    # Get best params
-    best_K1 = parameter_ls[best_idx]["bm25_K1"]
-    best_B = parameter_ls[best_idx]["bm25_B"]
-    best_factors = parameter_ls[best_idx]["factors"]
-    best_reg = parameter_ls[best_idx]["reg"]
-    best_iters = parameter_ls[best_idx]["iters"]
+    # Set up MLflow experiment + start parent run
+    exp_name = os.getenv("MLFLOW_EXPERIMENT_NAME", "als_movielens_20m")
+    mlflow.set_experiment(exp_name)
+    
+    run_name = f"train | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | n_rows={n_rows}"
+    with mlflow.start_run(run_name=run_name) as run:
+        # Tags
+        mlflow.set_tags({
+            "component": "train_api",
+            "framework": "implicit",
+            "algorithm": "ALS",
+            "host": platform.node(),
+            "os": platform.platform()
+        })
 
-    # Weight complete data
-    complete_data_weighted_csr = bm25_weight(complete_data_csr, K1=best_K1, B=best_B).tocsr()
+        # Save parameter about data and search space.
+        mlflow.log_params({
+            "data_path_ratings": data_path_ratings,
+            "data_path_movies": data_path_movies,
+            "n_rows": n_rows,
+            "pos_threshold": train_param.pos_threshold,
+            "ratings_sha256": _sha256(data_path_ratings),
+            "movies_sha256": _sha256(data_path_movies)
+        })
 
-    # Define model with best params
-    best_model = AlternatingLeastSquares(
-        factors=best_factors,
-        regularization=best_reg,
-        iterations=best_iters
-    )
-    print("\nTrain model on whole dataset with best params...")
-    best_model.fit(complete_data_weighted_csr)
-
-    # Store model data
-    best_param = BestParameters(
-            best_K1=best_K1,
-            best_B=best_B,
-            best_factor=best_factors,
-            best_reg=best_reg,
-            best_iters=best_iters,
+        # Log the whole grid as a single JSON param (correct API: log_param) -> better overview
+        mlflow.log_param(
+            "search_space_json",
+            json.dumps({
+                "bm25_K1_list": list(train_param.als_parameter.bm25_K1_list),
+                "bm25_B_list": list(train_param.als_parameter.bm25_B_list),
+                "factors_list": list(train_param.als_parameter.factors_list),
+                "reg_list": list(train_param.als_parameter.reg_list),
+                "iters_list": list(train_param.als_parameter.iters_list),
+            })
         )
 
-    global model_state
-    model_state = Model_State.init_from_training(
-        model= best_model,
-        train_csr=train_csr,
-        test_csr=test_csr,
-        mappings=mappings,
-        movie_id_dict=movie_id_dict,
-        popular_item_ids=popular_item_ids,
-        best_params=best_param,
-        best_metrics=metrics_ls[best_idx]
-    )
+        # Prepare rating data
+        train_csr, test_csr, mappings = prepare_data(
+            df=df_ratings,
+            pos_threshold= train_param.pos_threshold,
+        )
+
+        # Compute item-movie dict for quick lookup
+        movie_id_dict = build_movie_id_dict(df_movies)
+
+        # get popular items for the case that a new user occurs that havent watched any movies by now.
+        popular_item_ids = get_popular_items(
+            df=df_ratings,
+            top_n=train_param.n_popular_movies,
+            threshold=train_param.pos_threshold)
+        print(f"\nShape of popular_item_ids is {len(popular_item_ids)}")
+
+        # Grid search
+        best_model , metrics_ls, parameter_ls, best_idx = als_grid_search(
+            train_csr=train_csr,
+            test_csr=test_csr,
+            bm25_K1_list=train_param.als_parameter.bm25_K1_list,
+            bm25_B_list=train_param.als_parameter.bm25_B_list,
+            factors_list=train_param.als_parameter.factors_list,
+            reg_list=train_param.als_parameter.reg_list,
+            iters_list=train_param.als_parameter.iters_list
+        )
+
+        # Log all grid results as one csv artifact
+        try:
+            rows = []
+            for params, m in zip(parameter_ls, metrics_ls):
+                # TODO: Change K to an actual parameter!
+                rows.append({
+                    **params,
+                    "precision_@_k": float(m.prec_at_k),
+                    "map_at_k": float(m.map_at_k)
+                })
+            grid_df = pd.DataFrame(rows)
+            artifacts_dir = Path("mlflow_artifacts")
+            artifacts_dir.mkdir(exist_ok=True)
+            grid_path = artifacts_dir / "grid_results.csv"
+            grid_df.to_csv(grid_path, index=False)
+            mlflow.log_artifact(str(grid_path), artifact_path="search")
+        except Exception as e:
+            logging.warning(f"Could not log grid results artifact: {e}")
+                
+
+        # Retrain model on whole data
+        # Build complete data in csr 
+        complete_data_csr = train_csr + test_csr
+        
+        # Get best params
+        best_K1 = parameter_ls[best_idx]["bm25_K1"]
+        best_B = parameter_ls[best_idx]["bm25_B"]
+        best_factors = parameter_ls[best_idx]["factors"]
+        best_reg = parameter_ls[best_idx]["reg"]
+        best_iters = parameter_ls[best_idx]["iters"]
+
+        # Weight complete data
+        complete_data_weighted_csr = bm25_weight(complete_data_csr, K1=best_K1, B=best_B).tocsr()
+
+        # Define model with best params
+        best_model = AlternatingLeastSquares(
+            factors=best_factors,
+            regularization=best_reg,
+            iterations=best_iters
+        )
+        print("\nTrain model on whole dataset with best params...")
+        best_model.fit(complete_data_weighted_csr)
+
+        # Store model data
+        best_param = BestParameters(
+                best_K1=best_K1,
+                best_B=best_B,
+                best_factor=best_factors,
+                best_reg=best_reg,
+                best_iters=best_iters,
+            )
+
+        best_metrics = metrics_ls[best_idx]
+        global model_state
+        model_state = Model_State.init_from_training(
+            model= best_model,
+            train_csr=train_csr,
+            test_csr=test_csr,
+            mappings=mappings,
+            movie_id_dict=movie_id_dict,
+            popular_item_ids=popular_item_ids,
+            best_params=best_param,
+            best_metrics=best_metrics
+        )
+
+        # Store best metrics in mlflow
+        mlflow.log_metrics({
+            "best_precision_at_k": float(best_metrics.prec_at_k),
+            "best_map_at_k": float(best_metrics.map_at_k)
+        })
+        mlflow.log_dict(asdict(best_param), "best_params.json")
 
     # Return train response
     return TrainResponse(best_param=best_param, best_metrics=metrics_ls[best_idx])

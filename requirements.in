@@ -16,6 +16,8 @@ scikit-learn
 
 # Experiment tracking
 mlflow
+cloudpickle
+joblib
 
 # Visualization
 matplotlib

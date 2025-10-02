@@ -93,3 +93,9 @@ target/
 venv/
 env/
 ENV/
+
+# Ignore MLFlow storage
+mlflow.db
+mlartifacts/
+mlflow_artifacts/
+mlruns/
