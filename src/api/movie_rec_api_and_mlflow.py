@@ -21,6 +21,9 @@ import hashlib
 import platform
 
 import mlflow
+from mlflow import MlflowClient
+import joblib
+from mlflow.pyfunc import PythonModel
 
 from scipy.sparse import coo_matrix, csr_matrix
 from implicit.als import AlternatingLeastSquares
@@ -35,13 +38,14 @@ from src.models.als_movie_rec import (
     get_popular_items,
     als_grid_search,
     recommend_item,
-    get_movie_names
+    get_movie_names,
+    evaluate_als
 )
 
 
 
 # _________________________________________________________________________________________________________
-# Helper functions
+# Helper functions and classes 
 # _________________________________________________________________________________________________________
 
 
@@ -68,6 +72,85 @@ def _sha256(path: str) -> str:
         return "unavailable"
 
 
+class ALSRecommenderPyFunc(PythonModel):
+    """
+    The trained model saved with joblib can be loaded with 'mlflow.pyfunc.load_model'. This 
+    model can use this extended logic. Meaning the model itself after loading contains the 
+    'predict' method from this class.
+
+    Exp.:
+        # Load model 
+        model = mlflow.pyfunc.load_model("runs:/<run_id>/model")
+        # Predict the 
+        model.predict(df)
+    """
+    def load_context(self, context: mlflow.pyfunc.model.PythonModelContext) -> None:
+            """
+            Loads the serialized Model_State object (stored as a joblib file)
+            from the MLflow artifacts when the model is loaded.
+
+            Parameters
+            ----------
+            context : mlflow.pyfunc.model.PythonModelContext
+                MLflow context object providing artifact paths.
+            """
+            state_path: str = context.artifacts["state_path"]
+            self._state: Model_State = joblib.load(state_path)
+
+
+    # model_input: DataFrame with columns: user_id (int), n_movies_to_rec (int, optional),
+    # new_user_interactions (list[int], optional)
+    def predict(
+            self,
+            context: mlflow.pyfunc.model.PythonModelContext,
+            model_input: pd.DataFrame
+        ) -> pd.DataFrame:
+        """
+        Uses the loaded model state to generate movie recommendations
+        for each user in the input DataFrame.
+
+        Parameters
+        ----------
+        context : mlflow.pyfunc.model.PythonModelContext
+            MLflow context (not used here but required by interface).
+        model_input : pd.DataFrame
+            DataFrame with columns:
+            - user_id: int
+            - n_movies_to_rec: int (optional)
+            - new_user_interactions: list[int] (optional)
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame with columns:
+            - movie_ids: list[int]
+            - movie_titles: list[str]
+        """
+        rows: list[dict[str, Any]] = []
+
+        for _, row in model_input.iterrows():
+            user_id: int = int(row["user_id"])
+            n_rec: int = int(row.get("n_movies_to_rec", 5))
+            new_inter: Optional[list[int]] = row.get("new_user_interactions", None)
+
+            rec_ids: list[int] = recommend_item(
+                als_model=self._state.model,
+                data_csr=self._state.full_csr_weighted,
+                user_id=user_id,
+                mappings=self._state.mappings,
+                n_movies_to_rec=n_rec,
+                new_user_interactions=new_inter,
+                popular_item_ids=self._state.popular_item_ids,
+            )
+
+            rows.append({
+                "movie_ids": rec_ids,
+                "movie_titles": get_movie_names(self._state.movie_id_dict, rec_ids),
+            })
+
+        return pd.DataFrame(rows)
+
+
 # _________________________________________________________________________________________________________
 # State holder
 # _________________________________________________________________________________________________________
@@ -80,8 +163,12 @@ class BestParameters:
     best_reg: float
     best_iters: int
 
+
+
 @dataclass
 class Model_State:
+    '''Class to store the information of the current model. This includes the model itself,
+    the datatset as well ans mappings and best parameters + metrics.'''
     model: Optional[AlternatingLeastSquares] = None
     train_csr: Optional[csr_matrix] = None
     test_csr: Optional[csr_matrix] = None
@@ -92,6 +179,7 @@ class Model_State:
     best_metrics: Optional[ALS_Metrics] = None
     best_parameters: Optional[BestParameters] = None
 
+
     def build_full_csr(self) -> None:
         assert self.train_csr is not None and self.test_csr is not None, "train/test missing"
         assert self.best_parameters is not None, "best params missing"
@@ -101,6 +189,7 @@ class Model_State:
             K1=self.best_parameters.best_K1,
             B=self.best_parameters.best_B
         ).tocsr()
+
 
     @classmethod
     def init_from_training(
@@ -239,7 +328,6 @@ def train_endpoint(train_param: TrainRequest):
 
     # Load data
     n_rows = train_param.n_rows
-
     # Check for existing paths
     if not os.path.exists(data_path_ratings):
         raise HTTPException(
@@ -263,7 +351,6 @@ def train_endpoint(train_param: TrainRequest):
             detail=f"Failed to read CSVs: {e}"
             )
 
-    
     # Set up MLflow experiment + start parent run
     exp_name = os.getenv("MLFLOW_EXPERIMENT_NAME", "als_movielens_20m")
     mlflow.set_experiment(exp_name)
@@ -310,7 +397,7 @@ def train_endpoint(train_param: TrainRequest):
         # Compute item-movie dict for quick lookup
         movie_id_dict = build_movie_id_dict(df_movies)
 
-        # get popular items for the case that a new user occurs that havent watched any movies by now.
+        # Get popular items for the case that a new user occurs that hasn't watched any movies by now.
         popular_item_ids = get_popular_items(
             df=df_ratings,
             top_n=train_param.n_popular_movies,
@@ -318,7 +405,7 @@ def train_endpoint(train_param: TrainRequest):
         print(f"\nShape of popular_item_ids is {len(popular_item_ids)}")
 
         # Grid search
-        best_model , metrics_ls, parameter_ls, best_idx = als_grid_search(
+        _ , metrics_ls, parameter_ls, best_idx = als_grid_search(
             train_csr=train_csr,
             test_csr=test_csr,
             bm25_K1_list=train_param.als_parameter.bm25_K1_list,
@@ -332,22 +419,24 @@ def train_endpoint(train_param: TrainRequest):
         try:
             rows = []
             for params, m in zip(parameter_ls, metrics_ls):
-                # TODO: Change K to an actual parameter!
+                # TODO: Change K to an actual parameter value! -> Define parameter
                 rows.append({
                     **params,
                     "precision_@_k": float(m.prec_at_k),
                     "map_at_k": float(m.map_at_k)
                 })
+            # Create df from grid params and corresponding metrics
             grid_df = pd.DataFrame(rows)
+            # Create storage path 
             artifacts_dir = Path("mlflow_artifacts")
             artifacts_dir.mkdir(exist_ok=True)
             grid_path = artifacts_dir / "grid_results.csv"
+            # Store df as csv file
             grid_df.to_csv(grid_path, index=False)
             mlflow.log_artifact(str(grid_path), artifact_path="search")
         except Exception as e:
             logging.warning(f"Could not log grid results artifact: {e}")
                 
-
         # Retrain model on whole data
         # Build complete data in csr 
         complete_data_csr = train_csr + test_csr
@@ -399,6 +488,65 @@ def train_endpoint(train_param: TrainRequest):
             "best_map_at_k": float(best_metrics.map_at_k)
         })
         mlflow.log_dict(asdict(best_param), "best_params.json")
+
+        # _____________________________________________________________________
+        # Log a pyfunc model
+        # _____________________________________________________________________
+        
+        # Save trained model with jolib under dir "mlflow_artifacts"
+        artifacts_dir = Path("mlflow_artifacts")
+        artifacts_dir.mkdir(exist_ok=True)
+        state_pkl = artifacts_dir / "model_state.pkl"
+        joblib.dump(model_state, state_pkl)
+
+        # Define a inoput example for using the model saved as mlflow artifact.
+        input_example = pd.DataFrame([{
+            "user_id": 1,
+            "n_movies_to_rec": 5.0,
+            "new_user_interactions": [1, 2, 3]
+        }])
+
+        # Define the output of the _model.predict() method from "ALSRecommenderPyFunc"
+        output_example = pd.DataFrame([{
+            "movie_ids": [1, 2],
+            "movie_titles": ["Movie A", "Movie B"]
+        }])
+        signature = mlflow.models.infer_signature(
+            input_example.astype({"n_movies_to_rec": "float64"}),
+            output_example)
+
+        model_info = mlflow.pyfunc.log_model(
+            # artifact_path="model",
+            name="als_pyfunc",
+            python_model=ALSRecommenderPyFunc(),
+            artifacts={"state_path": str(state_pkl)},
+            signature=signature,
+            input_example=input_example,
+            # Defines requirements needed to run hte model.
+            pip_requirements=[
+                "mlflow",
+                "pandas",
+                "numpy",
+                "scipy",
+                "implicit",
+                "joblib",
+            ],
+        )
+        
+        # _____________________________________________________________________
+        # Register model version
+        # _____________________________________________________________________
+        model_name = os.getenv("MLFLOW_MODEL_NAME", "ALSRecommender")
+        run_id = mlflow.active_run().info.run_id
+        
+        registered = mlflow.register_model(
+            model_uri=model_info.model_uri,
+            name=model_name
+        )
+        
+        # Tag the run with the created version for convenience
+        mlflow.set_tags({"registered_model": model_name, "registered_version": registered.version})
+
 
     # Return train response
     return TrainResponse(best_param=best_param, best_metrics=metrics_ls[best_idx])
