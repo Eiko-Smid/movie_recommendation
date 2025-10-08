@@ -219,7 +219,7 @@ def als_grid_search(
     K: int = 10
 ) -> Tuple[
     Optional[AlternatingLeastSquares],
-    List[Dict[str, float]],
+    List[ALS_Metrics],
     List[Dict[str, Any]],
     Optional[int],
 ]:
