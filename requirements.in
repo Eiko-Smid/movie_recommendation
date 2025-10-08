@@ -1,0 +1,28 @@
+# Core
+numpy<2.0               # avoid pulling NumPy 2 which can cascade conflicts
+scipy>=1.11,<1.14       # has Py3.11 wheels; also avoids the implicit eval bug
+pandas<2.3              # optional: keeps pandas from forcing numpy 2
+
+# Recommender algorithms
+implicit==0.7.2         # your current version
+
+# For API
+fastapi
+uvicorn
+pydantic
+
+# Machine learning / metrics
+scikit-learn
+
+# Experiment tracking
+mlflow
+cloudpickle
+joblib
+
+# Visualization
+matplotlib
+seaborn
+
+# Dev tools
+jupyterlab
+black

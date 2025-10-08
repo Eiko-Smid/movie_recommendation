@@ -87,3 +87,20 @@ target/
 
 # Mypy cache
 .mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Ignore MLFlow storage
+mlflow.db
+mlartifacts/
+mlflow_artifacts/
+mlruns/
+artifacts_tmp/
+champ_store/
+
+# Ignore requirements.in
+requirements.in
