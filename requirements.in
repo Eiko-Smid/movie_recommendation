@@ -26,3 +26,11 @@ seaborn
 # Dev tools
 jupyterlab
 black
+
+# for sql db
+SQLAlchemy
+psycopg2-binary
+
+# for .env
+python-dotenv
+dotenv
