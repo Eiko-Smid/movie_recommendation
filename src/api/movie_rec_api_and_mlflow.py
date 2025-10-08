@@ -43,6 +43,17 @@ from src.models.als_movie_rec import (
 )
 
 
+'''
+Description:
+
+This code includes three api endpoints. One for health check, one for training the model and one for
+making movie recommendations. 
+The model thats will been trained is an ALS model. The training endpoint which trains this model also 
+aves the model and tags the current best model. 
+
+
+'''
+
 
 # _________________________________________________________________________________________________________
 # Helper functions and classes 
@@ -536,6 +547,7 @@ def train_endpoint(train_param: TrainRequest):
         # _____________________________________________________________________
         # Register model version
         # _____________________________________________________________________
+        
         model_name = os.getenv("MLFLOW_MODEL_NAME", "ALSRecommender")
         run_id = mlflow.active_run().info.run_id
         

@@ -99,3 +99,8 @@ mlflow.db
 mlartifacts/
 mlflow_artifacts/
 mlruns/
+artifacts_tmp/
+champ_store/
+
+# Ignore requirements.in
+requirements.in

@@ -216,6 +216,7 @@ def als_grid_search(
     factors_list: Sequence[int] = (128, 256),
     reg_list: Sequence[float] = (0.10, 0.20),
     iters_list: Sequence[int] = (25,),
+    K: int = 10
 ) -> Tuple[
     Optional[AlternatingLeastSquares],
     List[Dict[str, float]],
@@ -254,7 +255,7 @@ def als_grid_search(
         model.fit(train_weighted_csr)
 
         # Evaluate model results
-        metrics = evaluate_als(model, train_weighted_csr, test_csr, K=10, num_threads=0, show_progress=True)
+        metrics = evaluate_als(model, train_weighted_csr, test_csr, K=K, num_threads=0, show_progress=True)
         
         # Store metrics
         metrics_ls.append(metrics)
