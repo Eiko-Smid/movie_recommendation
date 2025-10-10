@@ -5,8 +5,8 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 from pathlib import Path
 import tempfile
 
-from sqlalchemy import create_engine # WHATS NEW SCOOBYDOO
-from dotenv import load_dotenv # WHATS NEW SCOOBYDOO
+from sqlalchemy import create_engine 
+from dotenv import load_dotenv 
 
 from fastapi import FastAPI, HTTPException, status, Query, Request
 from fastapi.responses import JSONResponse
@@ -76,7 +76,7 @@ client = MlflowClient()
 # _________________________________________________________________________________________________________
 # Helper functions and classes 
 # _________________________________________________________________________________________________________
-# WHATS NEW SCOOBYDOO
+
 def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
     ''' 
     Loads the ratings and movies data from the PostgreSQL database into Pandas DataFrames,
@@ -135,7 +135,7 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
             detail=f"Failed to load data from database: {e}"
         )
     
-    return df_ratings, df_movies # WHATS NEW SCOOBYDOO
+    return df_ratings, df_movies
 
 
 def prepare_training(
