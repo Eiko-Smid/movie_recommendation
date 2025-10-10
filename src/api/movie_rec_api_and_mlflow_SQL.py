@@ -782,11 +782,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Retrain + MLflow (simple)", lifespan=lifespan)
 
-@app.get("/debug-db-url")
-def debug_db_url():
-    import os
-    return {"DB_URL": os.getenv("DB_URL")}   # WHATS NEW SCOOBYDOO
-
 
 @app.post("/train", response_model=TrainResponse)
 def train_endpoint(train_param: TrainRequest):
