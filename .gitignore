@@ -102,4 +102,5 @@ mlruns/
 artifacts_tmp/
 champ_store/
 
-# Ignore requirements.in
+# Ignore postgres db data
+postgres_data/

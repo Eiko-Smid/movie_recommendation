@@ -443,12 +443,12 @@ pytokens==0.1.10
     # via black
 pytz==2025.2
     # via pandas
-pywin32==311
+pywin32==311 ; platform_system == "Windows"
     # via
     #   docker
     #   jupyter-core
     #   mcp
-pywinpty==3.0.0
+pywinpty==3.0.0 ; platform_system == "Windows" 
     # via
     #   jupyter-server
     #   jupyter-server-terminals

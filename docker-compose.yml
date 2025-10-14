@@ -1,0 +1,58 @@
+services:
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+      args:
+        MLFLOW_VERSION: "3.4.0"
+    container_name: mlflow_server
+    ports:
+      - "5000:5000"
+    # Single canonical volume where BOTH the DB and artifacts live on your host
+    volumes:
+      - ./mlartifacts:/mlflow/mlartifacts
+      - ./mlflow.db:/mlflow/mlflow.db 
+
+
+  # 🐘 PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_DB: movielens_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Dbzices##01
+    ports:
+      - "5432:5432"
+    volumes:
+       # Persistent database files on host:
+      - ./postgres_data:/var/lib/postgresql/data
+      # Auto-restore on first init (runs only when data dir is empty):
+      - ./data/dump:/docker-entrypoint-initdb.d:ro
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: movie_rec_api
+    depends_on:
+      - mlflow
+    ports:
+      - "8000:8000"   # FastAPI
+      - "5678:5678"   # debugpy
+    environment:
+      # If you run MLflow on Windows host at :5000, use host.docker.internal
+      MLFLOW_TRACKING_URI: "http://mlflow:5000"
+      MLFLOW_EXPERIMENT_NAME: "als_movie_rec"
+      MODEL_NAME: "als_model_versioning"
+      OPENBLAS_NUM_THREADS: "1"
+    volumes:
+      # Mount your data exactly where code expects it
+      - ./data:/app/data:ro
+      # Optional: live-edit code without rebuilds
+      - ./src:/app/src
+      # Champion csr matrix storage
+      - ./champ_store:/app/champ_store
+      # Environment var for db.
+      - ./.env:/app/.env

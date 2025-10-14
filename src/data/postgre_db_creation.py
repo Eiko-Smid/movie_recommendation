@@ -102,7 +102,7 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
     # CSV files are in the same folder as the script, so just pass script_dir 
-    data_dir = script_dir
+    data_dir = "data/ml-20m"
 
     # Confirmation
     print(f"Current script directory: {script_dir}")

@@ -77,6 +77,67 @@ client = MlflowClient()
 # Helper functions and classes 
 # _________________________________________________________________________________________________________
 
+# def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
+#     ''' 
+#     Loads the ratings and movies CSV files into Pandas DataFrames.
+
+#     This function is called at the beginning of the /train endpoint to load
+#     the MovieLens ratings and movie metadata. It verifies that the files exist
+#     and handles limited row loading based on the value of train_param.n_rows.
+
+#     Parameters
+#     ----------
+#     train_param : TrainRequest
+#         Training request parameters containing 'n_rows', which limits the
+#         number of rows read from the ratings CSV (0 = load full dataset).
+
+#     Returns
+#     -------
+#     Tuple[pd.DataFrame, pd.DataFrame]
+#         A tuple (df_ratings, df_movies) where:
+#         - df_ratings : Ratings dataset (columns: userId, movieId, rating, timestamp)
+#         - df_movies  : Movie metadata (columns: movieId, title, genres)
+
+#     Raises
+#     ------
+#     HTTPException
+#         If a CSV file cannot be found (404) or if reading fails (400).
+    
+#     TODO: Replace this by a data base functionality.
+#     '''
+#     # Define file paths
+#     data_path_ratings = "data/ml-20m/ratings.csv"
+#     data_path_movies = "data/ml-20m/movies.csv"
+
+#     # Load data
+#     n_rows = train_param.n_rows
+#     # Check for existing paths
+#     if not os.path.exists(data_path_ratings):
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail=f"Ratings csv file not found. Path is:\n{data_path_ratings}"
+#         )
+
+#     if not os.path.exists(data_path_movies):
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail=f"Movies csv file not found. Path is:\n{data_path_movies}"
+#         )
+    
+#     # Try to load data
+#     try:
+#         df_ratings = pd.read_csv(data_path_ratings, nrows= n_rows if n_rows > 0 else None)
+#         df_movies = pd.read_csv(data_path_movies)
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=f"Failed to read CSVs: {e}"
+#             )
+    
+#     return df_ratings, df_movies
+
+
+
 def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
     ''' 
     Loads the ratings and movies data from the PostgreSQL database into Pandas DataFrames,
