@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1
+FROM python:3.11-slim
+
+# implicit needs OpenMP at runtime
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 curl && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# 1) install deps
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 2) copy your code (src) and keep data separate (we'll mount it)
+COPY src ./src
+
+# Make "src/..." imports work
+ENV PYTHONPATH=/app
+
+# Debug + API ports
+EXPOSE 5678 8000 5432 
+
+# Run API under debugpy; module path points to your file
+# Note: uvicorn module is "src.api.movie_rec_api_and_mlflow_SQL:app"
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", \
+     "-m", "uvicorn", "src.api.movie_rec_api_and_mlflow_SQL:app", "--host", "0.0.0.0", "--port", "8000"]

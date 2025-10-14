@@ -77,71 +77,9 @@ client = MlflowClient()
 # Helper functions and classes 
 # _________________________________________________________________________________________________________
 
-def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    ''' 
-    Loads the ratings and movies CSV files into Pandas DataFrames.
-
-    This function is called at the beginning of the /train endpoint to load
-    the MovieLens ratings and movie metadata. It verifies that the files exist
-    and handles limited row loading based on the value of train_param.n_rows.
-
-    Parameters
-    ----------
-    train_param : TrainRequest
-        Training request parameters containing 'n_rows', which limits the
-        number of rows read from the ratings CSV (0 = load full dataset).
-
-    Returns
-    -------
-    Tuple[pd.DataFrame, pd.DataFrame]
-        A tuple (df_ratings, df_movies) where:
-        - df_ratings : Ratings dataset (columns: userId, movieId, rating, timestamp)
-        - df_movies  : Movie metadata (columns: movieId, title, genres)
-
-    Raises
-    ------
-    HTTPException
-        If a CSV file cannot be found (404) or if reading fails (400).
-    
-    TODO: Replace this by a data base functionality. 
-    '''
-    # Define file paths
-    data_path_ratings = "data/ml-20m/ratings.csv"
-    data_path_movies = "data/ml-20m/movies.csv"
-
-    # Load data
-    n_rows = train_param.n_rows
-    # Check for existing paths
-    if not os.path.exists(data_path_ratings):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Ratings csv file not found. Path is:\n{data_path_ratings}"
-        )
-
-    if not os.path.exists(data_path_movies):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Movies csv file not found. Path is:\n{data_path_movies}"
-        )
-    
-    # Try to load data
-    try:
-        df_ratings = pd.read_csv(data_path_ratings, nrows= n_rows if n_rows > 0 else None)
-        df_movies = pd.read_csv(data_path_movies)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to read CSVs: {e}"
-            )
-    
-    return df_ratings, df_movies
-
-
-
 # def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 #     ''' 
-#     Loads the ratings and movies data from the PostgreSQL database into Pandas DataFrames,
-#     instead of the CSV files.
+#     Loads the ratings and movies CSV files into Pandas DataFrames.
 
 #     This function is called at the beginning of the /train endpoint to load
 #     the MovieLens ratings and movie metadata. It verifies that the files exist
@@ -163,40 +101,102 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 #     Raises
 #     ------
 #     HTTPException
-#         If connection to the database fails or (500) or the queries fail (400).
-#     '''
+#         If a CSV file cannot be found (404) or if reading fails (400).
     
-#     # Load environment variables and DB connection URL
-#     load_dotenv()
-#     DB_URL = os.getenv('DB_URL')
-#     if not DB_URL:
+#     TODO: Replace this by a data base functionality.
+#     '''
+#     # Define file paths
+#     data_path_ratings = "data/ml-20m/ratings.csv"
+#     data_path_movies = "data/ml-20m/movies.csv"
+
+#     # Load data
+#     n_rows = train_param.n_rows
+#     # Check for existing paths
+#     if not os.path.exists(data_path_ratings):
 #         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail="Database connection URL not found in environment variables."
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail=f"Ratings csv file not found. Path is:\n{data_path_ratings}"
 #         )
 
-#     engine = create_engine(DB_URL)
-
-#     n_rows = train_param.n_rows
-
+#     if not os.path.exists(data_path_movies):
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail=f"Movies csv file not found. Path is:\n{data_path_movies}"
+#         )
+    
+#     # Try to load data
 #     try:
-#         # Query ratings table with optional row limit
-#         query_ratings = 'SELECT "userId", "movieId", rating, timestamp FROM ratings'
-#         if n_rows > 0:
-#             query_ratings += f" LIMIT {n_rows}"
-#         df_ratings = pd.read_sql_query(query_ratings, con=engine)
-
-#         # Query movies table
-#         query_movies = 'SELECT "movieId", title, genres FROM movies'
-#         df_movies = pd.read_sql_query(query_movies, con=engine)
-
+#         df_ratings = pd.read_csv(data_path_ratings, nrows= n_rows if n_rows > 0 else None)
+#         df_movies = pd.read_csv(data_path_movies)
 #     except Exception as e:
 #         raise HTTPException(
 #             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail=f"Failed to load data from database: {e}"
-#         )
+#             detail=f"Failed to read CSVs: {e}"
+#             )
     
 #     return df_ratings, df_movies
+
+
+
+def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    ''' 
+    Loads the ratings and movies data from the PostgreSQL database into Pandas DataFrames,
+    instead of the CSV files.
+
+    This function is called at the beginning of the /train endpoint to load
+    the MovieLens ratings and movie metadata. It verifies that the files exist
+    and handles limited row loading based on the value of train_param.n_rows.
+
+    Parameters
+    ----------
+    train_param : TrainRequest
+        Training request parameters containing 'n_rows', which limits the
+        number of rows read from the ratings CSV (0 = load full dataset).
+
+    Returns
+    -------
+    Tuple[pd.DataFrame, pd.DataFrame]
+        A tuple (df_ratings, df_movies) where:
+        - df_ratings : Ratings dataset (columns: userId, movieId, rating, timestamp)
+        - df_movies  : Movie metadata (columns: movieId, title, genres)
+
+    Raises
+    ------
+    HTTPException
+        If connection to the database fails or (500) or the queries fail (400).
+    '''
+    
+    # Load environment variables and DB connection URL
+    load_dotenv()
+    DB_URL = os.getenv('DB_URL')
+    if not DB_URL:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database connection URL not found in environment variables."
+        )
+
+    engine = create_engine(DB_URL)
+
+    n_rows = train_param.n_rows
+
+    try:
+        # Query ratings table with optional row limit
+        query_ratings = 'SELECT "userId", "movieId", rating, timestamp FROM ratings'
+        if n_rows > 0:
+            query_ratings += f" LIMIT {n_rows}"
+        df_ratings = pd.read_sql_query(query_ratings, con=engine)
+
+        # Query movies table
+        query_movies = 'SELECT "movieId", title, genres FROM movies'
+        df_movies = pd.read_sql_query(query_movies, con=engine)
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to load data from database: {e}"
+        )
+    
+    return df_ratings, df_movies
 
 
 def prepare_training(

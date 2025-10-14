@@ -1,0 +1,32 @@
+# Dockerfile.mlflow
+FROM python:3.11-slim
+
+WORKDIR /mlflow
+
+# Optional: tini for clean signal handling
+RUN apt-get update && apt-get install -y --no-install-recommends tini && rm -rf /var/lib/apt/lists/*
+
+# Specify mlflow version to use
+ARG MLFLOW_VERSION=3.4.0
+
+# Use the SAME mlflow version as your app to avoid surprises
+RUN pip install --no-cache-dir mlflow==${MLFLOW_VERSION}
+
+# Expose UI port
+EXPOSE 5000
+
+# # Default paths inside the container (Created bby cmd command for now.)
+# ENV MLFLOW_BACKEND_URI=sqlite:////mlflow/mlflow.db
+# ENV MLFLOW_ARTIFACT_ROOT=/mlflow/artifacts
+
+# tini ensures proper SIGTERM handling
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+CMD [ \
+  "mlflow", "server", \
+  "--host", "0.0.0.0", \
+  "--port", "5000", \
+  "--backend-store-uri", "sqlite:////mlflow/mlflow.db", \
+ "--artifacts-destination", "/mlflow/mlartifacts", \
+  "--workers", "1" \
+]
