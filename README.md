@@ -51,3 +51,51 @@ Project Organization
 --------
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
+
+
+
+# Project setup
+
+### 1. Clone repo
+
+```bash
+git clone https://github.com/DataScientest-Studio/sep25_bmlops_int_movie_reco.git
+```
+--------
+
+### 2. Add files
+
+Folders to add:
+
+data/ml-20m
+- ratings.csv
+- movies.csv
+
+data/dump
+- sump.sql (backup of original DB)
+
+.env
+```
+DB_URL=postgresql+psycopg2://postgres:Dbzices##01@postgres:5432/movielens_db
+POSTGRES_DB=movielens_db
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=password
+```
+
+### 3. Build docker container
+
+```bash
+docker compose build 
+```
+
+or
+```bash
+docker compose build 
+```
+if build failed and you want clean new setup.
+
+### 4. Start docker services
+
+```bash
+docker compose up
+```
