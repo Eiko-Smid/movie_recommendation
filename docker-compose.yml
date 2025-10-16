@@ -10,19 +10,24 @@ services:
       - "5000:5000"
     # Single canonical volume where BOTH the DB and artifacts live on your host
     volumes:
-      - ./mlartifacts:/mlflow/mlartifacts
-      - ./mlflow.db:/mlflow/mlflow.db 
+      - ./mlflow:/mlflow
 
 
-  # 🐘 PostgreSQL Database
+  # PostgreSQL Database
   postgres:
     image: postgres:15
     container_name: postgres_db
     restart: always
     environment:
-      POSTGRES_DB: movielens_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: Dbzices##01
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 30s
     ports:
       - "5432:5432"
     volumes:
@@ -36,8 +41,12 @@ services:
       context: .
       dockerfile: Dockerfile.api
     container_name: movie_rec_api
-    depends_on:
-      - mlflow
+    depends_on: 
+      postgres:
+            # Waits with start until db is set up
+          condition: service_healthy
+      mlflow:
+        condition: service_started
     ports:
       - "8000:8000"   # FastAPI
       - "5678:5678"   # debugpy
