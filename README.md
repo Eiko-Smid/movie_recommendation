@@ -72,9 +72,9 @@ data/ml-20m
 - movies.csv
 
 data/dump
-- sump.sql (backup of original DB)
+- dump.sql (backup of original DB)
 
-.env
+.env (file)
 ```
 DB_URL=postgresql+psycopg2://postgres:Dbzices##01@postgres:5432/movielens_db
 POSTGRES_DB=movielens_db
@@ -90,7 +90,7 @@ docker compose build
 
 or
 ```bash
-docker compose build 
+docker compose build --no-cache
 ```
 if build failed and you want clean new setup.
 
@@ -99,3 +99,13 @@ if build failed and you want clean new setup.
 ```bash
 docker compose up
 ```
+
+### 5. Start Debugger
+
+- Go to vscode debugger (Run and Debug) in left sidebar
+- Click on green play button
+
+### 6. Wait until SQL DB is up
+
+- If error in train endpoint happens, is mostly due to the fact that the DB isn't finished creating
+- Just wait a few seconds and try again
