@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Mapping, Iterable, Any
 
 import numpy as np
 import pandas as pd
-from scipy.sparse import coo_matrix, csr_matrix
+from scipy.sparse import coo_matrix, csr_matrix, diags
 from implicit.als import AlternatingLeastSquares
 from implicit.nearest_neighbours import bm25_weight
 from implicit.evaluation import train_test_split, precision_at_k, mean_average_precision_at_k
@@ -92,7 +92,7 @@ def build_binary_coo(
 def prepare_data(
         df: pd.DataFrame,
         pos_threshold: float = 3.0,
-        ) -> Tuple[csr_matrix, csr_matrix, Mappings]:
+        ) -> Tuple[csr_matrix, csr_matrix, Mappings, np.ndarray]:
     '''
     Prepare the data by dropping nons, keep only ratings > threshold, split into train and test and 
     build scr matrixes of them. Returns the train, test csr matrices and the mappings.
@@ -166,13 +166,35 @@ def prepare_data(
         item_id_to_index=item_id_to_index,
     )
 
-    return train_coo.tocsr(), test_coo.tocsr(), mappings
+    # Filter train rows > 5 intersections, test rows > 1 intersection
+    train_csr = train_coo.tocsr()
+    test_csr = test_coo.tocsr()
+    train_counts = np.diff(train_csr.indptr)
+    test_counts = np.diff(test_csr.indptr)
+
+    # Boolean mask of eligible users: >=5 train AND >=1 test
+    # TODO Use this mask in the evaluation function instead of filtering the test set right awy here!
+    print(f"\nTest data entries before masking: {test_csr.nnz}")
+    evaluation_set_mask = (train_counts >= 5) & (test_counts >= 1)
+    
+    n_users = train_csr.shape[0]
+    row_mask = evaluation_set_mask.astype(int)
+    D = diags(row_mask, 0, shape=(n_users, n_users), format="csr")
+    test_csr = D.dot(test_csr)
+    
+    print(f"Test data entries after masking: {test_csr.nnz}")
+
+    ratio = evaluation_set_mask.sum() / train_coo.shape[0] * 100
+    print(f"\nTHe evaluation set includes {ratio:.2f} % of the original train/test data.")
+
+    return train_csr, test_csr, mappings, evaluation_set_mask
 
 
 def evaluate_als(
         model: AlternatingLeastSquares,
         train_coo: csr_matrix,
         test_coo: csr_matrix,
+        evaluation_set: np.ndarray,
         K: int = 10,
         num_threads: int = 0,
         show_progress: bool = False
@@ -211,6 +233,7 @@ def evaluate_als(
 def als_grid_search(
     train_csr: csr_matrix,
     test_csr: csr_matrix,
+    evaluation_set: np.ndarray,
     bm25_K1_list: Sequence[int] = (100, 200),
     bm25_B_list: Sequence[float]  = (0.8, 1.0),
     factors_list: Sequence[int] = (128, 256),
@@ -255,7 +278,9 @@ def als_grid_search(
         model.fit(train_weighted_csr)
 
         # Evaluate model results
-        metrics = evaluate_als(model, train_weighted_csr, test_csr, K=K, num_threads=0, show_progress=True)
+        metrics = evaluate_als(model, train_weighted_csr, test_csr, evaluation_set, K=K, num_threads=0, show_progress=True)
+        print(f"prec_@_k= {metrics.prec_at_k}")
+        print(f"map_@_k= {metrics.map_at_k}")
         
         # Store metrics
         metrics_ls.append(metrics)

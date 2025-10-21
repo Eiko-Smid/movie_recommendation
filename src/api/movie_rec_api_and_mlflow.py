@@ -77,71 +77,9 @@ client = MlflowClient()
 # Helper functions and classes 
 # _________________________________________________________________________________________________________
 
-# def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
-#     ''' 
-#     Loads the ratings and movies CSV files into Pandas DataFrames.
-
-#     This function is called at the beginning of the /train endpoint to load
-#     the MovieLens ratings and movie metadata. It verifies that the files exist
-#     and handles limited row loading based on the value of train_param.n_rows.
-
-#     Parameters
-#     ----------
-#     train_param : TrainRequest
-#         Training request parameters containing 'n_rows', which limits the
-#         number of rows read from the ratings CSV (0 = load full dataset).
-
-#     Returns
-#     -------
-#     Tuple[pd.DataFrame, pd.DataFrame]
-#         A tuple (df_ratings, df_movies) where:
-#         - df_ratings : Ratings dataset (columns: userId, movieId, rating, timestamp)
-#         - df_movies  : Movie metadata (columns: movieId, title, genres)
-
-#     Raises
-#     ------
-#     HTTPException
-#         If a CSV file cannot be found (404) or if reading fails (400).
-    
-#     TODO: Replace this by a data base functionality.
-#     '''
-#     # Define file paths
-#     data_path_ratings = "data/ml-20m/ratings.csv"
-#     data_path_movies = "data/ml-20m/movies.csv"
-
-#     # Load data
-#     n_rows = train_param.n_rows
-#     # Check for existing paths
-#     if not os.path.exists(data_path_ratings):
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail=f"Ratings csv file not found. Path is:\n{data_path_ratings}"
-#         )
-
-#     if not os.path.exists(data_path_movies):
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail=f"Movies csv file not found. Path is:\n{data_path_movies}"
-#         )
-    
-#     # Try to load data
-#     try:
-#         df_ratings = pd.read_csv(data_path_ratings, nrows= n_rows if n_rows > 0 else None)
-#         df_movies = pd.read_csv(data_path_movies)
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail=f"Failed to read CSVs: {e}"
-#             )
-    
-#     return df_ratings, df_movies
-
-
-
 def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
     ''' 
-    Loads the ratings and movies data from the PostgreSQL database into Pandas DataFrames,
-    instead of the CSV files.
+    Loads the ratings and movies CSV files into Pandas DataFrames.
 
     This function is called at the beginning of the /train endpoint to load
     the MovieLens ratings and movie metadata. It verifies that the files exist
@@ -163,40 +101,102 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
     Raises
     ------
     HTTPException
-        If connection to the database fails or (500) or the queries fail (400).
-    '''
+        If a CSV file cannot be found (404) or if reading fails (400).
     
-    # Load environment variables and DB connection URL
-    load_dotenv()
-    DB_URL = os.getenv('DB_URL')
-    if not DB_URL:
+    TODO: Replace this by a data base functionality.
+    '''
+    # Define file paths
+    data_path_ratings = "data/ml-20m/ratings.csv"
+    data_path_movies = "data/ml-20m/movies.csv"
+
+    # Load data
+    n_rows = train_param.n_rows
+    # Check for existing paths
+    if not os.path.exists(data_path_ratings):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection URL not found in environment variables."
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ratings csv file not found. Path is:\n{data_path_ratings}"
         )
 
-    engine = create_engine(DB_URL)
-
-    n_rows = train_param.n_rows
-
+    if not os.path.exists(data_path_movies):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Movies csv file not found. Path is:\n{data_path_movies}"
+        )
+    
+    # Try to load data
     try:
-        # Query ratings table with optional row limit
-        query_ratings = 'SELECT "userId", "movieId", rating, timestamp FROM ratings'
-        if n_rows > 0:
-            query_ratings += f" LIMIT {n_rows}"
-        df_ratings = pd.read_sql_query(query_ratings, con=engine)
-
-        # Query movies table
-        query_movies = 'SELECT "movieId", title, genres FROM movies'
-        df_movies = pd.read_sql_query(query_movies, con=engine)
-
+        df_ratings = pd.read_csv(data_path_ratings, nrows= n_rows if n_rows > 0 else None)
+        df_movies = pd.read_csv(data_path_movies)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to load data from database: {e}"
-        )
+            detail=f"Failed to read CSVs: {e}"
+            )
     
     return df_ratings, df_movies
+
+
+
+# def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
+#     ''' 
+#     Loads the ratings and movies data from the PostgreSQL database into Pandas DataFrames,
+#     instead of the CSV files.
+
+#     This function is called at the beginning of the /train endpoint to load
+#     the MovieLens ratings and movie metadata. It verifies that the files exist
+#     and handles limited row loading based on the value of train_param.n_rows.
+
+#     Parameters
+#     ----------
+#     train_param : TrainRequest
+#         Training request parameters containing 'n_rows', which limits the
+#         number of rows read from the ratings CSV (0 = load full dataset).
+
+#     Returns
+#     -------
+#     Tuple[pd.DataFrame, pd.DataFrame]
+#         A tuple (df_ratings, df_movies) where:
+#         - df_ratings : Ratings dataset (columns: userId, movieId, rating, timestamp)
+#         - df_movies  : Movie metadata (columns: movieId, title, genres)
+
+#     Raises
+#     ------
+#     HTTPException
+#         If connection to the database fails or (500) or the queries fail (400).
+#     '''
+    
+#     # Load environment variables and DB connection URL
+#     load_dotenv()
+#     DB_URL = os.getenv('DB_URL')
+#     if not DB_URL:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Database connection URL not found in environment variables."
+#         )
+
+#     engine = create_engine(DB_URL)
+
+#     n_rows = train_param.n_rows
+
+#     try:
+#         # Query ratings table with optional row limit
+#         query_ratings = 'SELECT "userId", "movieId", rating, timestamp FROM ratings'
+#         if n_rows > 0:
+#             query_ratings += f" LIMIT {n_rows}"
+#         df_ratings = pd.read_sql_query(query_ratings, con=engine)
+
+#         # Query movies table
+#         query_movies = 'SELECT "movieId", title, genres FROM movies'
+#         df_movies = pd.read_sql_query(query_movies, con=engine)
+
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=f"Failed to load data from database: {e}"
+#         )
+    
+#     return df_ratings, df_movies
 
 
 def prepare_training(
@@ -208,6 +208,7 @@ def prepare_training(
         csr_matrix,
         csr_matrix,
         Mappings,
+        np.ndarray,
         Dict[int, str],
         List[int]
     ]:
@@ -232,16 +233,16 @@ def prepare_training(
     Returns
     -------
     Tuple[pd.DataFrame, csr_matrix, csr_matrix, Mappings, Dict[int, str], List[int]]
-        (df_ratings, train_csr, test_csr, mappings, movie_id_dict, popular_item_ids)
+        (df_ratings, train_csr, test_csr, mappings, evaluation_set, movie_id_dict, popular_item_ids)
     '''
     # Only use random subset of df
-    perc = 0.8
-    n_samples = int(df_ratings.shape[0] * perc)
-    df_ratings = df_ratings.sample(n=n_samples, random_state=np.random.randint(0, 1_000_000))
+    # perc = 0.8
+    # n_samples = int(df_ratings.shape[0] * perc)
+    # df_ratings = df_ratings.sample(n=n_samples, random_state=np.random.randint(0, 1_000_000))
 
     # Set up model training
     # Prepare data
-    train_csr, test_csr, mappings = prepare_data(
+    train_csr, test_csr, mappings, evaluation_set = prepare_data(
         df=df_ratings,
         pos_threshold= train_param.pos_threshold,
     )
@@ -256,7 +257,7 @@ def prepare_training(
         threshold=train_param.pos_threshold)
     print(f"\nShape of popular_item_ids is {len(popular_item_ids)}")
 
-    return df_ratings, train_csr, test_csr, mappings, movie_id_dict, popular_item_ids
+    return df_ratings, train_csr, test_csr, mappings, evaluation_set, movie_id_dict, popular_item_ids
 
 
 def mlflow_log_run(
@@ -345,9 +346,9 @@ def mlflow_log_run(
         best_weighted_csr = bm25_weight(train_csr, K1=best_param.best_K1, B=best_param.best_B).tocsr()
 
         # Build a full state (so colleagues loading via MLflow get an immediately-usable model)
+        # TODO: Delete the train_csr matrix from the model state (too large -> too slow!)
         state_obj = Model_State(
             model=model,
-            train_csr=best_weighted_csr,
             mappings=mappings,
             popular_item_ids=popular_item_ids,
             movie_id_dict=movie_id_dict
@@ -404,6 +405,7 @@ def did_model_improve(
         champ_params: Optional[dict],
         train_csr: csr_matrix,
         test_csr: csr_matrix,
+        evaluation_set: np.ndarray,
         best_metrics: ALS_Metrics
     ) -> bool:
     '''
@@ -442,6 +444,7 @@ def did_model_improve(
         champ_model_, champ_metrics_, champ_params_, champ_idx_ = als_grid_search(
             train_csr=train_csr,
             test_csr=test_csr,
+            evaluation_set=evaluation_set,
             bm25_K1_list=[champ_params["bm25_K1"]],
             bm25_B_list=[champ_params["bm25_B"]],
             factors_list=[champ_params["factors"]],
@@ -558,7 +561,7 @@ class ALSRecommenderPyFunc(PythonModel):
 
             rec_ids: list[int] = recommend_item(
                 als_model=self._state.model,
-                data_csr=self._state.train_csr,
+                data_csr=TRAIN_CSR_STORE.get_csr_matrix(),
                 user_id=user_id,
                 mappings=self._state.mappings,
                 n_movies_to_rec=n_rec,
@@ -684,7 +687,6 @@ class Model_State:
     Holds the model state and everything needed to make recommendations with the champ model.
     '''
     model: AlternatingLeastSquares
-    train_csr: csr_matrix
     mappings: Mappings
     popular_item_ids: list[int]
     movie_id_dict: dict[int, str]
@@ -719,13 +721,22 @@ class TrainCSRStore:
         self.csr = mat
         print(f"[champ-store] Saved champion train_csr to {self.path}")
 
-    
-    def get_csr_matrix(self):
-        if self.csr:
+
+    def get_csr_matrix(self)-> Optional[csr_matrix]:
+        '''
+        Returns the csr matrix if already loaded, else None.
+        '''
+        if self.csr is not None:
             return self.csr
         else:
+            try:
+                self.load()
+            except Exception as e:
+                raise RuntimeError(
+                f"[champ-store] Champion train_csr not available at {self.path}. "
+                f"Has a champion been saved yet?"
+            )
             return None
-
 
 
 TRAIN_CSR_STORE = TrainCSRStore(CHAMPION_TRAIN_CSR_PATH)
@@ -843,8 +854,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         CHAMP_MODEL = None
     
-    yield                             # app runs while yielded
-    print("[champ-store] App shutting down")  # optional cleanup
+    yield                                       # app runs while yielded
+    print("[champ-store] App shutting down")    # optional cleanup
     # Optionally TRAIN_CSR_STORE.csr = None
     # or save to disk if needed
 
@@ -863,6 +874,7 @@ def train_endpoint(train_param: TrainRequest):
     train_csr,
     test_csr,
     mappings,
+    evaluation_set,
     movie_id_dict,
     popular_item_ids,
     ) = prepare_training(
@@ -876,6 +888,7 @@ def train_endpoint(train_param: TrainRequest):
     model, metrics_ls, parameter_ls, best_idx = als_grid_search(
         train_csr=train_csr,
         test_csr=test_csr,
+        evaluation_set=evaluation_set,
         bm25_K1_list=train_param.als_parameter.bm25_K1_list,
         bm25_B_list=train_param.als_parameter.bm25_B_list,
         factors_list=train_param.als_parameter.factors_list,
@@ -910,6 +923,7 @@ def train_endpoint(train_param: TrainRequest):
         champ_params=champ_params,
         train_csr=train_csr,
         test_csr=test_csr,
+        evaluation_set=evaluation_set,
         best_metrics=best_metrics
     )
     
