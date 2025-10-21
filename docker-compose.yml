@@ -65,3 +65,22 @@ services:
       - ./champ_store:/app/champ_store
       # Environment var for db.
       - ./.env:/app/.env
+
+  # 🕐 Scheduled Trainer (daily retraining)
+  # Training can be manually started with: docker exec -it daily_trainer sh -c "curl -X POST http://api:8000/train -H 'Content-Type: application/json' -d @/data/train_payload.json
+  trainer:
+    image: curlimages/curl:8.5.0
+    container_name: daily_trainer
+    user: root  # ✅ allow writing to /etc/crontabs/root
+    depends_on:
+      api:
+        condition: service_started
+    command: >
+      sh -c "
+        echo \"* 2 * * * echo \\\"\$(date '+%Y-%m-%d %H:%M:%S') - Starting training...\\\" >> /var/log/cron.log && curl -X POST http://api:8000/train -H 'Content-Type: application/json' -d @/data/train_payload.json >> /var/log/cron.log 2>&1\" > /etc/crontabs/root &&
+        echo '✅ Cron job scheduled: daily at 2:00 UTC -> POST http://api:8000/train using /data/train_payload.json' &&
+        crond -f -l 2
+      "
+    volumes:
+      - ./logs:/var/log  # persist cron logs locally
+      - ./train_payload.json:/data/train_payload.json:ro  # ✅ mount payload file read-only
