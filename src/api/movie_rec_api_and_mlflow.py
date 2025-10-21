@@ -8,9 +8,10 @@ import tempfile
 from sqlalchemy import create_engine 
 from dotenv import load_dotenv 
 
-from fastapi import FastAPI, HTTPException, status, Query, Request
+from fastapi import FastAPI, HTTPException, status, Query, Request, APIRouter
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
+from fastapi.requests import Request
 from contextlib import asynccontextmanager
 
 from dataclasses import dataclass, asdict
@@ -861,6 +862,29 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Retrain + MLflow (simple)", lifespan=lifespan)
+
+@app.exception_handler(ValueError)
+async def value_error_handler(_: Request, exc: ValueError):
+    '''
+    Every time a value error occurs Fast API routes this error to this handler instead of crashing.
+    '''
+    # e.g., "No positives after binarization" from prepare_data
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"detail": str(exc)},
+    )
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(_: Request, exc: Exception):
+    '''
+    Catches any other exception that wasn’t explicitly handled and returns a 500 JSON response instead.
+    '''
+    logging.exception("Unhandled error in /train: %s", exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error while training the model."},
+    )
+
 
 
 @app.post("/train", response_model=TrainResponse)
