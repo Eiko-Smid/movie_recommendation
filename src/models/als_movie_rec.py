@@ -238,7 +238,8 @@ def als_grid_search(
     factors_list: Sequence[int] = (128, 256),
     reg_list: Sequence[float] = (0.10, 0.20),
     iters_list: Sequence[int] = (25,),
-    K: int = 10
+    K: int = 10,
+    n_samples: int = 0
 ) -> Tuple[
     Optional[AlternatingLeastSquares],
     List[ALS_Metrics],
@@ -259,9 +260,17 @@ def als_grid_search(
     best_idx = None
 
     best_score = -np.inf
-    combo_iter = product(bm25_K1_list, bm25_B_list, factors_list, reg_list, iters_list)
+    combo_iter = list(
+        product(bm25_K1_list, bm25_B_list, factors_list, reg_list, iters_list)
+    )
 
-    for idx, (K1, B, factors, reg, iters) in enumerate(combo_iter):
+    if n_samples > 0:
+        n_samples = min(n_samples, len(combo_iter))
+        sampled_combo_iter = random.sample(combo_iter, n_samples)
+    else:
+        sampled_combo_iter = combo_iter
+
+    for idx, (K1, B, factors, reg, iters) in enumerate(sampled_combo_iter):
         print(f"\n=== Trying: BM25(K1={K1}, B={B}), ALS(factors={factors}, reg={reg}, iters={iters}) ===")
 
         # Compute weighted data
@@ -299,9 +308,6 @@ def als_grid_search(
     return best_model, metrics_ls, parameter_ls, best_idx
 
 
-def snap32(x): 
-    return max(32, int(round(x / 32) * 32))
-
 
 def grid_search_advanced(
     train_csr: csr_matrix,
@@ -319,169 +325,63 @@ def grid_search_advanced(
     f_finetune_perc: Sequence[float] = (0.85, 1.0, 1.15),
     r_finetune_perc: Sequence[float] = (0.75, 1.0, 1.25)
 ):
-    # First stage: Find K1, B1 starting point
-    first_stage_combo = product(bm25_K1_list, bm25_B_list)
-    best_map_stage_1 = -np.inf
-    best_K1 = None
-    best_B = None
 
-    # Define solid ALS baseline for training
-    # TODO: Add this to conf file
+    # Stage 1: Find K1, B1 starting point
     baseline = {
         "factors": 160,
         "reg": 0.1,
         "iters": 25
     }
-        
-    for idx, (K1, B) in enumerate(first_stage_combo):
-        print("\nFirst grid search stage.")
-        print(f"Trying K= {K1}, B= {B}")
 
-        train_weighted_csr = bm25_weight(train_csr, K1=K1, B=B).tocsr()
+    # Grid search with varying K1, B1 values and fixed base line 
+    # Do grid search 
+    _, stage_1_metr, stage_1_param, stage_1_best_idx = als_grid_search(
+        train_csr=train_csr, 
+        test_csr=test_csr,
+        evaluation_set=evaluation_set,
+        bm25_K1_list=bm25_K1_list,
+        bm25_B_list=bm25_B_list,
+        factors_list=[baseline["factors"]],
+        reg_list=[baseline["reg"]],
+        iters_list=[baseline["iters"]],
+        K=K
+    )
 
-        # Define model
-        model = AlternatingLeastSquares(
-            factors=baseline.get("factors"),
-            regularization=baseline.get("reg"),
-            iterations=baseline.get("iters")
-        )
+    # Stage 2: Big area search with fixed K1, B1
+    # Do grid search 
+    _, stage_2_metr, stage_2_param, stage_2_best_idx = als_grid_search(
+        train_csr=train_csr, 
+        test_csr=test_csr,
+        evaluation_set=evaluation_set,
+        bm25_K1_list=[stage_1_param[stage_1_best_idx]["bm25_K1"]],
+        bm25_B_list=[stage_1_param[stage_1_best_idx]["bm25_B"]],
+        factors_list=factors_list,
+        reg_list=reg_list,
+        iters_list=iters_list,
+        K=K,
+        n_samples=n_samples
+    )
 
-        # Train model
-        print("\nTrain model...")
-        model.fit(train_weighted_csr)
-
-        # Evaluate results
-        metrics = evaluate_als(
-            model=model,
-            train_coo=train_weighted_csr,
-            test_coo=test_csr,
-            evaluation_set=evaluation_set,
-            K=K,
-            num_threads=num_threads,
-            show_progress=show_progress
-        )
-        print(f"prec_@_k= {metrics.prec_at_k}")
-        print(f"map_@_k= {metrics.map_at_k}")
-
-        if metrics.map_at_k > best_map_stage_1:
-            best_map_stage_1 = metrics.map_at_k
-            best_K1 = K1
-            best_B = B
-
-
-    # Stage 2: Sampled search
-    # Create param list
-    second_stage_combo = list(product(
-        [best_K1],
-        [best_B],
-        factors_list,
-        reg_list,
-        iters_list
-    ))
-
-    # Define N samples
-    best_map_stage_2 = -np.inf
-    second_stage_best_combo = {}
-    n_samples = min(n_samples, len(second_stage_combo))
-    second_stage_sampled_combo = random.sample(second_stage_combo, n_samples)
-    for idx, (K1, B, factor, reg, iter) in enumerate(second_stage_sampled_combo):
-        print(f"\n=== Trying: BM25(K1={K1}, B={B}), ALS(factors={factor}, reg={reg}, iters={iter}) ===")
-
-        # Compute weighted data
-        train_weighted_csr = bm25_weight(train_csr, K1= K1, B=B).tocsr()
-
-        # Train ALS model
-        model = AlternatingLeastSquares(
-            factors=factor,
-            regularization=reg,
-            iterations=iter,
-        )
-        print("\nTrain model...")
-        model.fit(train_weighted_csr)
-
-        # Evaluate model results
-        metrics = evaluate_als(
-            model=model,
-            train_coo=train_weighted_csr,
-            test_coo=test_csr,
-            evaluation_set=evaluation_set,
-            K=K,
-            num_threads=num_threads,
-            show_progress=show_progress
-        )
-        print(f"prec_@_k= {metrics.prec_at_k}")
-        print(f"map_@_k= {metrics.map_at_k}")
-
-        if metrics.map_at_k > best_map_stage_2:
-            best_map_stage_2 = metrics.map_at_k
-            second_stage_best_combo = {
-                "bm25_K1": K1, "bm25_B": B,
-                "factors": factor, "reg": reg, "iters": iter, 
-            }
+    # Stage 3: Fine search near best parameter of stage 2
+    # Define safety factor and reg vals
+    stage_3_factors = [max(1, int(stage_2_param[stage_2_best_idx]["factors"] * perc)) for perc in f_finetune_perc]
+    stage_3_regs = [max(1e-8, stage_2_param[stage_2_best_idx]["reg"] * perc) for perc in r_finetune_perc]
     
-    # Stage 3: Fine grid search
-    # General def
-    parameter_ls = []
-    metrics_ls = []
-    best_model = None
-    best_idx = None
-    best_map_stage_3 = -np.inf
-    # Define factors and regs
-    factors_stage_3 = [int(second_stage_best_combo["factors"] * perc) for perc in f_finetune_perc]
-    regs_stage_3 = [second_stage_best_combo["reg"] * perc for perc in r_finetune_perc]
+    # Do grid search 
+    stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx = als_grid_search(
+        train_csr=train_csr, 
+        test_csr=test_csr,
+        evaluation_set=evaluation_set,
+        bm25_K1_list=[stage_2_param[stage_2_best_idx]["bm25_K1"]],
+        bm25_B_list=[stage_2_param[stage_2_best_idx]["bm25_B"]],
+        factors_list=stage_3_factors,
+        reg_list=stage_3_regs,
+        iters_list=[stage_2_param[stage_2_best_idx]["iters"]],
+        K=K
+    )
 
-    third_stage_combo = list(product(
-        [second_stage_best_combo["bm25_K1"]], 
-        [second_stage_best_combo["bm25_B"]],
-        factors_stage_3,
-        regs_stage_3,
-        [second_stage_best_combo["iters"]]
-    ))
+    return stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx
 
-    for idx, (K1, B, factor, reg, iter) in enumerate(third_stage_combo):
-        print(f"\n=== Trying: BM25(K1={K1}, B={B}), ALS(factors={factor}, reg={reg}, iters={iter}) ===")
-
-        # Compute weighted data
-        train_weighted_csr = bm25_weight(train_csr, K1= K1, B=B).tocsr()
-
-        # Train ALS model
-        model = AlternatingLeastSquares(
-            factors=factor,
-            regularization=reg,
-            iterations=iter,
-        )
-        print("\nTrain model...")
-        model.fit(train_weighted_csr)
-
-        # Evaluate model results
-        metrics = evaluate_als(
-            model=model,
-            train_coo=train_weighted_csr,
-            test_coo=test_csr,
-            evaluation_set=evaluation_set,
-            K=K,
-            num_threads=num_threads,
-            show_progress=show_progress
-        )
-        print(f"prec_@_k= {metrics.prec_at_k}")
-        print(f"map_@_k= {metrics.map_at_k}")
-
-        # Store metrics
-        metrics_ls.append(metrics)
-        
-        # Store parameter
-        parameter_ls.append({
-            "bm25_K1": K1, "bm25_B": B,
-            "factors": factor, "reg": reg, "iters": iter,            
-        })
-
-        # Find best metrics -> best params
-        if metrics.map_at_k > best_map_stage_3:
-            best_map_stage_3 = metrics.map_at_k
-            best_model = model
-            best_idx = idx
-    
-    return best_model, metrics_ls, parameter_ls, best_idx
 
 
 def build_movie_id_dict(movies_df: pd.DataFrame) -> Dict[int, str]:
