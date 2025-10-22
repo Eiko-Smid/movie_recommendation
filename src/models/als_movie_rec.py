@@ -311,11 +311,13 @@ def get_movie_metadata(movie_id_dict: dict, movie_ids: list[int]) -> tuple[list[
 
     for mov_id in movie_ids:
         movie_entry = movie_id_dict.get(mov_id)
-        if movie_entry:
+        if isinstance(movie_entry, dict):
+            # ✅ New schema: nested dict with title + genres
             movie_titles.append(movie_entry.get("title", f"Unknown {mov_id}"))
             movie_genres.append(movie_entry.get("genres", "Unknown"))
         else:
-            movie_titles.append(f"Unknown {mov_id}")
+            # ✅ Old schema: title only
+            movie_titles.append(movie_entry)
             movie_genres.append("Unknown")
 
     return movie_titles, movie_genres
