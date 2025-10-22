@@ -276,13 +276,19 @@ def als_grid_search(
 
 
 
-def build_movie_id_dict(movies_df: pd.DataFrame) -> Dict[int, str]:
+def build_movie_id_dict(movies_df: pd.DataFrame) -> Dict[int, dict[str, str]]:
     '''
-    Gets the pandas df containing the ratings and creates a dict for mapping the 
-    movie_ids to the actual movie names
+    Builds a lookup dictionary:
+      {movieId: {"title": str, "genres": str}}
     '''
     # Build a quick lookup dict: {movieId: title}
-    movie_id_dict = dict(zip(movies_df["movieId"], movies_df["title"]))
+    movie_id_dict = {
+        int(row["movieId"]): {
+            "title": row["title"],
+            "genres": row.get("genres", "Unknown")
+        }
+        for _, row in movies_df.iterrows()
+    }
     return movie_id_dict
 
 
@@ -293,6 +299,28 @@ def get_movie_names(movie_id_dict: dict, movie_ids: list[int]) -> List[str]:
     '''
     movie_names = [movie_id_dict.get(mov_id, f"Unknown {mov_id}") for mov_id in movie_ids] 
     return movie_names
+
+
+def get_movie_metadata(movie_id_dict: dict, movie_ids: list[int]) -> tuple[list[str], list[str]]:
+    """
+    Given a list of movie IDs, returns two aligned lists:
+    - movie_titles
+    - movie_genres
+    """
+    movie_titles, movie_genres = [], []
+
+    for mov_id in movie_ids:
+        movie_entry = movie_id_dict.get(mov_id)
+        if isinstance(movie_entry, dict):
+            # ✅ New schema: nested dict with title + genres
+            movie_titles.append(movie_entry.get("title", f"Unknown {mov_id}"))
+            movie_genres.append(movie_entry.get("genres", "Unknown"))
+        else:
+            # ✅ Old schema: title only
+            movie_titles.append(movie_entry)
+            movie_genres.append("Unknown")
+
+    return movie_titles, movie_genres
 
 
 def recommend_item(
