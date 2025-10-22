@@ -47,6 +47,7 @@ from src.models.als_movie_rec import (
     als_grid_search,
     recommend_item,
     get_movie_names,
+    get_movie_metadata,
     evaluate_als
 )
 
@@ -566,9 +567,11 @@ class ALSRecommenderPyFunc(PythonModel):
                 popular_item_ids=self._state.popular_item_ids,
             )
 
+            movie_titles, movie_genres = get_movie_metadata(self._state.movie_id_dict, rec_ids)
             rows.append({
                 "movie_ids": rec_ids,
-                "movie_titles": get_movie_names(self._state.movie_id_dict, rec_ids),
+                "movie_titles": movie_titles,
+                "movie_genres": movie_genres,
             })
 
         return pd.DataFrame(rows)
@@ -809,6 +812,7 @@ class RecommendResponse(BaseModel):
     user_id: int = Field(..., description="User ID for which recommendations were generated.")
     movie_ids: List[int] = Field(..., description="List of recommended movie IDs sorted by relevance.")
     movie_titles: List[str] = Field(..., description="List of corresponding movie titles.")
+    movie_genres: List[str] = Field(..., description="List of corresponding movie genres.")
 
 
 # _________________________________________________________________________________________________________
@@ -987,9 +991,11 @@ def recommend_endpoint(recom_param: RecommendRequest):
     # Extract df data
     movie_ids = df_movie_rec.iloc[0]["movie_ids"]
     movie_titles = df_movie_rec.iloc[0].get("movie_titles", None) or []
+    movie_genres = df_movie_rec.iloc[0].get("movie_genres", None) or []
 
     return RecommendResponse(
         user_id=recom_param.user_id,
         movie_ids=movie_ids,
-        movie_titles=movie_titles
+        movie_titles=movie_titles,
+        movie_genres=movie_genres
     )
