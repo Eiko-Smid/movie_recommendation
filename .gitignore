@@ -99,5 +99,9 @@ mlruns/
 artifacts_tmp/
 champ_store/
 
+mlflow/*
+!mlflow/.gitkeep
+
 # Ignore postgres db data
 postgres_data/
+
