@@ -48,7 +48,8 @@ from src.models.als_movie_rec import (
     als_grid_search,
     recommend_item,
     get_movie_names,
-    evaluate_als
+    evaluate_als,
+    grid_search_advanced
 )
 
 
@@ -909,7 +910,18 @@ def train_endpoint(train_param: TrainRequest):
 
     # Train model
     # Grid search
-    model, metrics_ls, parameter_ls, best_idx = als_grid_search(
+    # model, metrics_ls, parameter_ls, best_idx = als_grid_search(
+    #     train_csr=train_csr,
+    #     test_csr=test_csr,
+    #     evaluation_set=evaluation_set,
+    #     bm25_K1_list=train_param.als_parameter.bm25_K1_list,
+    #     bm25_B_list=train_param.als_parameter.bm25_B_list,
+    #     factors_list=train_param.als_parameter.factors_list,
+    #     reg_list=train_param.als_parameter.reg_list,
+    #     iters_list=train_param.als_parameter.iters_list
+    # )
+    # Advanced grid search
+    model, metrics_ls, parameter_ls, best_idx = grid_search_advanced(
         train_csr=train_csr,
         test_csr=test_csr,
         evaluation_set=evaluation_set,
@@ -917,7 +929,8 @@ def train_endpoint(train_param: TrainRequest):
         bm25_B_list=train_param.als_parameter.bm25_B_list,
         factors_list=train_param.als_parameter.factors_list,
         reg_list=train_param.als_parameter.reg_list,
-        iters_list=train_param.als_parameter.iters_list
+        iters_list=train_param.als_parameter.iters_list,
+        n_samples=12
     )
 
     # Extract best parameters & metrics
