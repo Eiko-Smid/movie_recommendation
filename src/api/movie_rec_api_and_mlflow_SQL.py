@@ -1,11 +1,11 @@
 from __future__ import annotations
 import logging
-import os
+import os, requests
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 from pathlib import Path
 import tempfile
 
-from sqlalchemy import create_engine 
+from sqlalchemy import create_engine, text
 from dotenv import load_dotenv 
 
 from fastapi import FastAPI, HTTPException, status, Query, Request
@@ -843,6 +843,56 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Retrain + MLflow (simple)", lifespan=lifespan)
 
+@app.get("/health", tags=["System"])
+def health_check():
+    """
+    Lightweight healthcheck endpoint.
+    Verifies connectivity to both the database and MLflow server.
+    Returns 200 OK if both are reachable, else 500.
+    """
+    load_dotenv()
+    DB_URL = os.getenv('DB_URL')
+    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
+    if not DB_URL:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database connection URL not found in environment variables."
+        )
+    status_report = {"timestamp": datetime.utcnow().isoformat()}
+    
+    # ✅ Check database connectivity
+    if not DB_URL:
+        status_report["database"] = "missing DB_URL env var"
+    try:
+        engine = create_engine(DB_URL)
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        status_report["database"] = "reachable"
+    except Exception as e:
+        status_report["database"] = f"unreachable ({str(e)})"
+
+    # ✅ Check MLflow connectivity
+    if not MLFLOW_TRACKING_URI:
+        status_report["mlflow"] = "missing MLFLOW_TRACKING_URI env var"
+    try:
+        mlflow_health_url = MLFLOW_TRACKING_URI.rstrip("/")
+        response = requests.get(mlflow_health_url, timeout=5)
+        if response.status_code == 200:
+            status_report["mlflow"] = "reachable"
+        else:
+            status_report["mlflow"] = f"error ({response.status_code})"
+    except Exception as e:
+        status_report["mlflow"] = f"unreachable ({str(e)})"
+
+    # ✅ Return aggregated report
+    if (
+        status_report.get("database") == "reachable"
+        and status_report.get("mlflow") == "reachable"
+    ):
+        return status_report
+    else:
+        raise HTTPException(status_code=500, detail=status_report)
+    
 
 @app.post("/train", response_model=TrainResponse)
 def train_endpoint(train_param: TrainRequest):
