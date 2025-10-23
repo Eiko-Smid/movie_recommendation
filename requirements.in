@@ -34,3 +34,6 @@ psycopg2-binary
 # for .env
 python-dotenv
 dotenv
+
+# for streamlit
+streamlit

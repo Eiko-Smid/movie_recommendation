@@ -20,7 +20,7 @@ train_data = {
 }
 if st.button("Start Training"):
     with st.spinner("Training in progress..."):
-        response=requests.post("http://localhost:8000/train", json=train_data)
+        response=requests.post("http://api:8000/train", json=train_data)
         if response.status_code == 200:
             st.success("Training completed!")
         else:
@@ -38,12 +38,15 @@ if st.button("Get Recommendations"):
             "new_user_interactions": [296, 318, 593]
         }    
         with st.spinner("Fetching recommendations...Hm, what could you like?🤔"):
-            response=requests.post(f"http://localhost:8000/recommend", json=prediction_data)
+            response=requests.post(f"http://api:8000/recommend", json=prediction_data)
             if response.status_code == 200:
                 recommendations=response.json()
                 st.write ("Recommendations:")
-                for movie in recommendations.get("movie_titles", []):
-                    st.write(f"-{movie}")
+                titles = recommendations.get("movie_titles", [])
+                genres = recommendations.get("movie_genres", [])
+
+                for title, genre in zip (titles, genres):
+                    st.write(f"-**{title}** _| Genres:_ {genre}")
             else:
                 st.error(f"Error: {response.text}")
     else:

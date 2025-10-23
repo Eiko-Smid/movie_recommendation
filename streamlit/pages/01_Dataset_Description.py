@@ -1,6 +1,11 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
+
+from sqlalchemy import create_engine
+from dotenv import load_dotenv
+
 
 st.title("The MovieLens 20M Dataset🎞️")
 st.markdown("""
@@ -24,21 +29,31 @@ Although not used in the scope of this project, these can be integrated in a dif
 """)
 
 
-# movies_preview = pd.read_csv ("data/ml-20m/movies.csv") [:10]
-# ratings_preview = pd.read_csv ("data/ml-20m/ratings.csv") [:10]
-movies = pd.read_csv ("data/ml-20m/movies.csv")
-ratings = pd.read_csv ("data/ml-20m/ratings.csv")
+# To create engine and load data - Load environment variables and DB connection URL
+load_dotenv()
+DB_URL = os.getenv('DB_URL')
+if DB_URL is None:
+    raise ValueError("DB_URL environment variable is not set. Check your .env file and load_dotenv call.")
+
+engine = create_engine(DB_URL)    
+
+# Query the Database and read tables into pandas
+query_movies = 'SELECT "movieId", title, genres FROM movies'
+movies_df = pd.read_sql_query(query_movies, con=engine)  # or pd.read_sql(query_movies, con=engine)
+
+query_ratings = 'SELECT "userId", "movieId", rating, timestamp FROM ratings'
+ratings_df = pd.read_sql_query(query_ratings, con=engine)
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Movies Table")
-    st.dataframe(movies.head(10)) # or just use movies_preview
+    st.dataframe(movies_df.head(10))
     st.caption("Contains movie metadata like titles and genres.")
 
 with col2:
     st.subheader("Ratings Table")
-    st.dataframe(ratings.head(10)) # or just use ratings_preview
+    st.dataframe(ratings_df.head(10))
     st.caption("Shows users' movie ratings and timestamps.")
 
 
@@ -47,19 +62,19 @@ col3,col4,col5= st.columns(3)
 
 with col3:
     st.subheader("QUICK STATS")
-    st.metric("Number of Movies", f"{len(movies):,}") # 27,278
-    st.metric("Number of Ratings",f"{len(ratings):,}") # 20,000,263
+    st.metric("Number of Movies", f"{len(movies_df):,}") # 27,278
+    st.metric("Number of Ratings",f"{len(ratings_df):,}") # 20,000,263
     st.metric("Number of Users","138,493")
     st.caption("Summary of key dimensions, showing how many movies, ratings and unique users are included.")
 
 with col4:
     # Additional metrics
     st.subheader("            ")
-    avg_rating = ratings['rating'].mean()
-    avg_ratings_per_user = ratings.groupby('userId')['rating'].count().mean()
-    avg_ratings_per_movie = ratings.groupby('movieId')['rating'].count().mean()
-    total_possible = len(ratings['userId'].unique()) * len(ratings['movieId'].unique())
-    sparsity = 1 - (len(ratings) / total_possible)
+    avg_rating = ratings_df['rating'].mean()
+    avg_ratings_per_user = ratings_df.groupby('userId')['rating'].count().mean()
+    avg_ratings_per_movie = ratings_df.groupby('movieId')['rating'].count().mean()
+    total_possible = len(ratings_df['userId'].unique()) * len(ratings_df['movieId'].unique())
+    sparsity = 1 - (len(ratings_df) / total_possible)
 
     st.metric("⭐ Average rating", f"{avg_rating:.2f}")
     st.metric("👥 Average ratings per user", f"{avg_ratings_per_user:.1f}")
@@ -71,7 +86,7 @@ with col4:
 with col5:
     st.subheader("Ratings Distribution")
     fig, ax = plt.subplots()
-    ratings_sample = pd.read_csv ("data/ml-20m/ratings.csv", nrows=50000)
+    ratings_sample = ratings_df.sample(n=30000)
     ratings_sample['rating'].hist(ax=ax, bins=10, color='cyan', edgecolor='black')
     ax.set_xlabel('Score')
     ax.set_ylabel('Frequency')
