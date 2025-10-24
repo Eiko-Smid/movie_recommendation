@@ -2,10 +2,27 @@ import streamlit as st
 import requests
 
 st.title("Our API Endpoints")
-st.write("This is just a draft.")
 
+st.header("🩺System Health Check")
+st.markdown(" *Check if the database and MLflow server are reachable.* ")
 
-st.header("Train the Model")
+if st.button("Run Health Check"):
+    with st.spinner("Checking backend and MLflow server health..."):
+        try:
+            response = requests.get("http://api:8000/health")  # call FastAPI health endpoint
+            if response.status_code == 200:
+                report = response.json()
+                st.success("All systems operational ✅")
+                st.json(report)
+            else:
+                st.error("Some systems appear to be down ❌")
+                st.json(response.json())
+        except requests.exceptions.RequestException as e:
+            st.error(f"Error connecting to API: {e}")
+
+    
+
+st.header("🏋🏽Train the Model")
 train_data = {
     "n_rows": 10000,
     "pos_threshold": 4.0,
@@ -27,14 +44,20 @@ if st.button("Start Training"):
             st.error(f"Error:{response.text}")
 
 
-st.header("Get Recommendations")
-user_id=st.text_input("Enter User ID to have a movie recommended")
+st.header("⭐Get Recommendations")
+col1, col2 = st.columns(2)
+
+with col1:
+    user_id = st.text_input("Enter User ID to have a movie recommended")
+
+with col2:
+    n_movies = st.number_input("Number of movies to recommend", min_value=1, max_value=100, value=5)
 
 if st.button("Get Recommendations"):
     if user_id.isdigit():
         prediction_data = {
             "user_id": int(user_id),
-            "n_movies_to_rec": 5,
+            "n_movies_to_rec": n_movies,
             "new_user_interactions": [296, 318, 593]
         }    
         with st.spinner("Fetching recommendations...Hm, what could you like?🤔"):
