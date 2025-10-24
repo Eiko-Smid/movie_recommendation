@@ -887,7 +887,6 @@ async def unhandled_exception_handler(_: Request, exc: Exception):
     )
 
 
-
 @app.post("/train", response_model=TrainResponse)
 def train_endpoint(train_param: TrainRequest):
     # Load data

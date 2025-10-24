@@ -90,7 +90,7 @@ def build_binary_coo(
 
 def prepare_data(
         df: pd.DataFrame,
-        pos_threshold: float = 3.0,
+        pos_threshold: float = 4.0,
         ) -> Tuple[csr_matrix, csr_matrix, Mappings, np.ndarray]:
     '''
     Prepare the data by dropping nons, keep only ratings > threshold, split into train and test and 
@@ -166,8 +166,11 @@ def prepare_data(
     )
 
     # Filter train rows > 5 intersections, test rows > 1 intersection
+    # Transform coo matrices to csr matrices
     train_csr = train_coo.tocsr()
     test_csr = test_coo.tocsr()
+
+    # Count elements in each row for train and test (We cant just iterate over because we deal with csr)
     train_counts = np.diff(train_csr.indptr)
     test_counts = np.diff(test_csr.indptr)
 
@@ -239,7 +242,8 @@ def als_grid_search(
     reg_list: Sequence[float] = (0.10, 0.20),
     iters_list: Sequence[int] = (25,),
     K: int = 10,
-    n_samples: int = 0
+    n_samples: int = 0,
+    alpha_list: Sequence[float] = (1.0,)
 ) -> Tuple[
     Optional[AlternatingLeastSquares],
     List[ALS_Metrics],
@@ -261,7 +265,7 @@ def als_grid_search(
 
     best_score = -np.inf
     combo_iter = list(
-        product(bm25_K1_list, bm25_B_list, factors_list, reg_list, iters_list)
+        product(bm25_K1_list, bm25_B_list, factors_list, reg_list, iters_list, alpha_list)
     )
 
     if n_samples > 0:
@@ -270,11 +274,13 @@ def als_grid_search(
     else:
         sampled_combo_iter = combo_iter
 
-    for idx, (K1, B, factors, reg, iters) in enumerate(sampled_combo_iter):
-        print(f"\n=== Trying: BM25(K1={K1}, B={B}), ALS(factors={factors}, reg={reg}, iters={iters}) ===")
+    for idx, (K1, B, factors, reg, iters, alpha) in enumerate(sampled_combo_iter):
+        print(f"\n=== Trying: BM25(K1={K1}, B={B}, alpha={alpha}), ALS(factors={factors}, reg={reg}, iters={iters}) ===")
 
         # Compute weighted data
         train_weighted_csr = bm25_weight(train_csr, K1= K1, B=B).tocsr()
+        if alpha != 1.0:
+            train_weighted_csr = train_weighted_csr * float(alpha)
 
         # Fit ALS model
         model = AlternatingLeastSquares(
@@ -296,7 +302,8 @@ def als_grid_search(
         # Store parameter
         parameter_ls.append({
             "bm25_K1": K1, "bm25_B": B,
-            "factors": factors, "reg": reg, "iters": iters,            
+            "factors": factors, "reg": reg, "iters": iters,
+            "alpha": alpha
         })
 
         # Find best metrics -> best params
@@ -323,7 +330,8 @@ def grid_search_advanced(
     show_progress: bool = True,
     n_samples: int = 12,
     f_finetune_perc: Sequence[float] = (0.85, 1.0, 1.15),
-    r_finetune_perc: Sequence[float] = (0.75, 1.0, 1.25)
+    r_finetune_perc: Sequence[float] = (0.75, 1.0, 1.25),
+    alpha_list: Sequence[float] = (1.0, 5.0, 10.0, 20.0, 40.0)
 ):
 
     # Stage 1: Find K1, B1 starting point
@@ -344,7 +352,8 @@ def grid_search_advanced(
         factors_list=[baseline["factors"]],
         reg_list=[baseline["reg"]],
         iters_list=[baseline["iters"]],
-        K=K
+        K=K,
+        alpha_list=(1.0,)
     )
 
     # Stage 2: Big area search with fixed K1, B1
@@ -359,13 +368,15 @@ def grid_search_advanced(
         reg_list=reg_list,
         iters_list=iters_list,
         K=K,
-        n_samples=n_samples
+        n_samples=n_samples,
+        alpha_list=alpha_list
     )
 
     # Stage 3: Fine search near best parameter of stage 2
     # Define safety factor and reg vals
     stage_3_factors = [max(1, int(stage_2_param[stage_2_best_idx]["factors"] * perc)) for perc in f_finetune_perc]
     stage_3_regs = [max(1e-8, stage_2_param[stage_2_best_idx]["reg"] * perc) for perc in r_finetune_perc]
+    best_alpha = stage_2_param[stage_2_best_idx]["alpha"]
     
     # Do grid search 
     stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx = als_grid_search(
@@ -377,7 +388,8 @@ def grid_search_advanced(
         factors_list=stage_3_factors,
         reg_list=stage_3_regs,
         iters_list=[stage_2_param[stage_2_best_idx]["iters"]],
-        K=K
+        K=K,
+        alpha_list=(best_alpha, )
     )
 
     return stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx
