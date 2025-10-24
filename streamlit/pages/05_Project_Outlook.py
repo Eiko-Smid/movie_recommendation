@@ -17,7 +17,7 @@ improvements = [
     },
     {
         "title": "🧠 Monitoring",
-        "description": "Use <b>Evidently AI<b> to detect <b>data drift</b> and <b>model degradation<b> early. Trigger automated retraining or alert notifications."
+        "description": "Use <b>Evidently AI</b> to detect data drift and model degradation early. Trigger automated retraining or alert notifications."
     },
     {
         "title": "🔒 API Security",
