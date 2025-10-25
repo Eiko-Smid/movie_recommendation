@@ -5,7 +5,6 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Sequence, Tuple, Mapping, Iterable, Any, TypedDict
 
-
 import numpy as np
 import pandas as pd
 from scipy.sparse import coo_matrix, csr_matrix, diags
@@ -268,6 +267,8 @@ def als_grid_search(
     iters_list) based on maximizing the metric "map_@_k". Returns the best model, all metrics 
     (precision_@_k, map_@_k) and all parameters and the index of the best parameter combination (best_idx).
     '''
+    actual_params = []
+
     # List to store train params and metrics
     parameter_ls = []
     metrics_ls = []
@@ -293,6 +294,16 @@ def als_grid_search(
 
     for idx, (K1, B, factors, reg, iters, alpha) in enumerate(sampled_combo_iter):
         print(f"\n=== Trying: BM25(K1={K1}, B={B}, alpha={alpha}), ALS(factors={factors}, reg={reg}, iters={iters}) ===")
+        actual_params.append(
+            {
+                "K1": K1,
+                "B": B,
+                "alpha": alpha,
+                "factors":factors,
+                "reg": reg,
+                "iters": iters
+            }
+        )
 
         # Compute weighted data
         train_weighted_csr = bm25_weight(train_csr, K1= K1, B=B).tocsr()
@@ -331,7 +342,7 @@ def als_grid_search(
             best_model = model
             best_idx = idx                    
 
-    return best_model, metrics_ls, parameter_ls, best_idx
+    return best_model, metrics_ls, parameter_ls, best_idx, actual_params
 
 
 
@@ -352,6 +363,8 @@ def grid_search_advanced(
     r_finetune_perc: Sequence[float] = (0.75, 1.0, 1.25),
     alpha_list: Sequence[float] = (1.0, 5.0, 10.0, 20.0, 40.0)
 ):
+    # List of dict containing actual param used
+    all_used_params = []
 
     # Stage 1: Find K1, B1 starting point
     baseline = {
@@ -362,7 +375,7 @@ def grid_search_advanced(
 
     # Grid search with varying K1, B1 values and fixed base line 
     # Do grid search 
-    _, stage_1_metr, stage_1_param, stage_1_best_idx = als_grid_search(
+    _, stage_1_metr, stage_1_param, stage_1_best_idx, actual_params = als_grid_search(
         train_csr=train_csr, 
         test_csr=test_csr,
         evaluation_set=evaluation_set,
@@ -374,10 +387,11 @@ def grid_search_advanced(
         K=K,
         alpha_list=(1.0,)
     )
+    all_used_params += actual_params
 
     # Stage 2: Big area search with fixed K1, B1
     # Do grid search 
-    _, stage_2_metr, stage_2_param, stage_2_best_idx = als_grid_search(
+    _, stage_2_metr, stage_2_param, stage_2_best_idx, actual_params = als_grid_search(
         train_csr=train_csr, 
         test_csr=test_csr,
         evaluation_set=evaluation_set,
@@ -390,6 +404,7 @@ def grid_search_advanced(
         n_samples=n_samples,
         alpha_list=alpha_list
     )
+    all_used_params += actual_params
 
     # Stage 3: Fine search near best parameter of stage 2
     # Define safety factor and reg vals
@@ -398,7 +413,7 @@ def grid_search_advanced(
     best_alpha = stage_2_param[stage_2_best_idx]["alpha"]
     
     # Do grid search 
-    stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx = als_grid_search(
+    stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx, actual_params = als_grid_search(
         train_csr=train_csr, 
         test_csr=test_csr,
         evaluation_set=evaluation_set,
@@ -410,8 +425,9 @@ def grid_search_advanced(
         K=K,
         alpha_list=(best_alpha, )
     )
+    all_used_params += actual_params
 
-    return stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx
+    return stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx, all_used_params
 
 
 

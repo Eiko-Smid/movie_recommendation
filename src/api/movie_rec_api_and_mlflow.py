@@ -2,10 +2,10 @@ from __future__ import annotations
 import logging
 import os
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
+# os.environ["OMP_NUM_THREADS"] = "1"
+# os.environ["MKL_NUM_THREADS"] = "1"
+# os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+# os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
 from pathlib import Path
 import tempfile
@@ -284,7 +284,7 @@ def prepare_training(
 def mlflow_log_run(
         train_param: TrainRequest,
         model: AlternatingLeastSquares,
-        # old_champ_model: AlternatingLeastSquares,
+        used_grid_param: Sequence[dict[int, float]],
         mappings: Mappings,
         best_param: BestParameters, 
         best_metrics: ALS_Metrics,
@@ -344,6 +344,11 @@ def mlflow_log_run(
                 "reg_list": list(train_param.als_parameter.reg_list),
                 "iters_list": list(train_param.als_parameter.iters_list),
             })
+        )
+        # Log used grid search param
+        mlflow.log_dict(
+            dictionary= {"Used_grid_parameter": used_grid_param},
+            artifact_file="used_grid_param.json"
         )
 
         # Log best params from grid search
@@ -425,7 +430,12 @@ def did_model_improve(
         evaluation_set: np.ndarray,
         best_metrics: ALS_Metrics,
         improve_threshold: float = 0.002
-    ) -> bool:
+    ) -> Tuple[
+        bool,
+        Optional[AlternatingLeastSquares],
+        Optional[List[ALS_Metrics]],
+        Optional[BestParameters]
+    ]:
     '''
     """
     Compares the new model against the current Champion model.
@@ -468,7 +478,7 @@ def did_model_improve(
         # Retrain champ model on new data using the old best params -> Only one training
         print("\nRetrain the ALS model with champ parameters:\n")
         for i in range(3):
-            champ_model, champ_metrics_list, champ_params_list, champ_idx = als_grid_search(
+            champ_model, champ_metrics_list, champ_params_list, champ_idx, actual_params = als_grid_search(
                 train_csr=train_csr,
                 test_csr=test_csr,
                 evaluation_set=evaluation_set,
@@ -485,7 +495,14 @@ def did_model_improve(
         # model_prec = best_metrics.prec_at_k
         model_map = best_metrics.map_at_k
         # Get champ params
-        champ_params = champ_params_list[champ_idx]
+        champ_params = BestParameters(
+            best_K1=champ_params_list[champ_idx]["bm25_K1"],
+            best_B=champ_params_list[champ_idx]["bm25_B"],
+            best_factor=champ_params_list[champ_idx]["factors"],
+            best_reg=champ_params_list[champ_idx]["reg"],
+            best_iters=champ_params_list[champ_idx]["iters"],
+        )
+
         # Decide new model is better than old champ model
         if model_map > (champ_map + improve_threshold):
             improved = True
@@ -938,18 +955,7 @@ def train_endpoint(train_param: TrainRequest):
 
     # Train model
     # Grid search
-    # model, metrics_ls, parameter_ls, best_idx = als_grid_search(
-    #     train_csr=train_csr,
-    #     test_csr=test_csr,
-    #     evaluation_set=evaluation_set,
-    #     bm25_K1_list=train_param.als_parameter.bm25_K1_list,
-    #     bm25_B_list=train_param.als_parameter.bm25_B_list,
-    #     factors_list=train_param.als_parameter.factors_list,
-    #     reg_list=train_param.als_parameter.reg_list,
-    #     iters_list=train_param.als_parameter.iters_list
-    # )
-    # Advanced grid search
-    model, metrics_ls, parameter_ls, best_idx = grid_search_advanced(
+    model, metrics_ls, parameter_ls, best_idx, used_params = grid_search_advanced(
         train_csr=train_csr,
         test_csr=test_csr,
         evaluation_set=evaluation_set,
@@ -984,6 +990,7 @@ def train_endpoint(train_param: TrainRequest):
         new_version, best_weighted_csr = mlflow_log_run(
             train_param=train_param,
             model=champ_model,
+            used_grid_param=used_params,
             mappings=mappings,
             best_param=champ_params,
             best_metrics=champ_metrics,
@@ -996,6 +1003,7 @@ def train_endpoint(train_param: TrainRequest):
        new_version, best_weighted_csr = mlflow_log_run(
             train_param=train_param,
             model=model,
+            used_grid_param=used_params,
             mappings=mappings,
             best_param=best_param,
             best_metrics=best_metrics,
