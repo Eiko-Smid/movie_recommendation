@@ -2,6 +2,11 @@ from __future__ import annotations
 import logging
 import os
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 from pathlib import Path
 import tempfile
 
@@ -37,6 +42,8 @@ from implicit.als import AlternatingLeastSquares
 from implicit.nearest_neighbours import bm25_weight
 
 from time import time, sleep
+
+import random
 
 # Import ALS recommend functionality
 from src.models.als_movie_rec import (
@@ -201,6 +208,14 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 #     return df_ratings, df_movies
 
 
+def csr_fingerprint(X) -> str:
+    import zlib
+    h = 0
+    for arr in (X.indptr, X.indices, X.data):
+        h = zlib.crc32(arr.view(np.uint8), h)
+    return f"{h & 0xffffffff:08x}"
+
+
 def prepare_training(
         df_ratings: pd.DataFrame,
         df_movies: pd.DataFrame,
@@ -248,6 +263,10 @@ def prepare_training(
         df=df_ratings,
         pos_threshold= train_param.pos_threshold,
     )
+    
+    # Print fingerprints of csr amtrices to see if they stay consitent through runs
+    # print("train_csr_hash:", csr_fingerprint(train_csr))
+    # print("test_csr_hash:",  csr_fingerprint(test_csr))
 
     # Compute item-movie dict for quick lookup
     movie_id_dict = build_movie_id_dict(df_movies)
@@ -265,14 +284,15 @@ def prepare_training(
 def mlflow_log_run(
         train_param: TrainRequest,
         model: AlternatingLeastSquares,
+        # old_champ_model: AlternatingLeastSquares,
         mappings: Mappings,
         best_param: BestParameters, 
         best_metrics: ALS_Metrics,
         train_csr: csr_matrix,
         popular_item_ids: List[int],
-        movie_id_dict: Dict[int, str]
+        movie_id_dict: Dict[int, str],
+        # improved: bool
     ) -> Tuple[
-        dict | None,
         str,
         csr_matrix
     ]:
@@ -305,11 +325,10 @@ def mlflow_log_run(
 
     Returns
     -------
-    Tuple[dict | None, str, csr_matrix]
-        (champ_params, new_version, best_weighted_csr)
-        - champ_params : The Champion model’s hyperparameters (if exist).
-        - new_version  : The new MLflow model version.
-        - best_weighted_csr : The BM25-weighted train matrix.
+    new_version: str
+        The new MLflow model version.
+    best_weighted_csr: csr_matrix
+        The BM25-weighted train matrix.
     '''
     # Define run name beased on date-time
     run_name = f"train | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | n_rows={train_param.n_rows}"
@@ -344,7 +363,7 @@ def mlflow_log_run(
         # Store model with joblib
         # joblib.dump(model, model_path)
 
-       # Recompute the BM25-weighted matrix that matches the *best* params
+        # Recompute the BM25-weighted matrix that matches the *best* params
         best_weighted_csr = bm25_weight(train_csr, K1=best_param.best_K1, B=best_param.best_B).tocsr()
 
         # Build a full state (so colleagues loading via MLflow get an immediately-usable model)
@@ -397,18 +416,15 @@ def mlflow_log_run(
     client.set_model_version_tag(MODEL_NAME, new_version, "prec_at_k", str(float(best_metrics.prec_at_k)))
     client.set_model_version_tag(MODEL_NAME, new_version, "map_at_k", str(float(best_metrics.map_at_k)))
 
-    # Load best params from champ version
-    champ_params = _load_champion_params(model_name=MODEL_NAME)
-
-    return champ_params, new_version, best_weighted_csr
+    return new_version, best_weighted_csr
 
 
 def did_model_improve(
-        champ_params: Optional[dict],
         train_csr: csr_matrix,
         test_csr: csr_matrix,
         evaluation_set: np.ndarray,
-        best_metrics: ALS_Metrics
+        best_metrics: ALS_Metrics,
+        improve_threshold: float = 0.002
     ) -> bool:
     '''
     """
@@ -437,34 +453,46 @@ def did_model_improve(
         no Champion exists; False otherwise.
     """
     '''
+    champ_model = None
+    champ_metrics = None
+    champ_params = None
+
+    # Load best params from champ version
+    champ_params = _load_champion_params(model_name=MODEL_NAME)
+
     if champ_params is None:
         # Set model improved flag to true if not champ model currently exists 
         champ_map = None
         improved = True
     else:
         # Retrain champ model on new data using the old best params -> Only one training
-        champ_model_, champ_metrics_, champ_params_, champ_idx_ = als_grid_search(
-            train_csr=train_csr,
-            test_csr=test_csr,
-            evaluation_set=evaluation_set,
-            bm25_K1_list=[champ_params["bm25_K1"]],
-            bm25_B_list=[champ_params["bm25_B"]],
-            factors_list=[champ_params["factors"]],
-            reg_list=[champ_params["reg"]],
-            iters_list=[champ_params["iters"]]
-        )
+        print("\nRetrain the ALS model with champ parameters:\n")
+        for i in range(3):
+            champ_model, champ_metrics_list, champ_params_list, champ_idx = als_grid_search(
+                train_csr=train_csr,
+                test_csr=test_csr,
+                evaluation_set=evaluation_set,
+                bm25_K1_list=[champ_params["bm25_K1"]],
+                bm25_B_list=[champ_params["bm25_B"]],
+                factors_list=[champ_params["factors"]],
+                reg_list=[champ_params["reg"]],
+                iters_list=[champ_params["iters"]]
+            )
+            
         # champ_prec = champ_metrics[champ_idx].prec_at_k
-        champ_map = champ_metrics_[champ_idx_].map_at_k
+        champ_metrics = champ_metrics_list[champ_idx]
+        champ_map = champ_metrics_list[champ_idx].map_at_k
         # model_prec = best_metrics.prec_at_k
         model_map = best_metrics.map_at_k
-
+        # Get champ params
+        champ_params = champ_params_list[champ_idx]
         # Decide new model is better than old champ model
-        if model_map > champ_map:
+        if model_map > (champ_map + improve_threshold):
             improved = True
         else: 
             improved = False
     
-    return improved
+    return improved, champ_model, champ_metrics, champ_params
 
 
 def update_champ_model(
@@ -864,6 +892,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Retrain + MLflow (simple)", lifespan=lifespan)
 
+
 @app.exception_handler(ValueError)
 async def value_error_handler(_: Request, exc: ValueError):
     '''
@@ -941,34 +970,45 @@ def train_endpoint(train_param: TrainRequest):
         best_iters=parameter_ls[best_idx]["iters"],
     )
     best_metrics = metrics_ls[best_idx]
-
-    # Log param. metrics, models
-    champ_params, new_version, best_weighted_csr = mlflow_log_run(
-        train_param=train_param,
-        model=model,
-        mappings=mappings,
-        best_param=best_param,
-        best_metrics=best_metrics,
-        train_csr=train_csr,
-        popular_item_ids=popular_item_ids,
-        movie_id_dict=movie_id_dict
-    )
     
     # Check if model has improved compared to current champ model
-    improved = did_model_improve(
-        champ_params=champ_params,
+    improved, champ_model, champ_metrics, champ_params = did_model_improve(
         train_csr=train_csr,
         test_csr=test_csr,
         evaluation_set=evaluation_set,
         best_metrics=best_metrics
     )
+
+    # Log param. metrics, models
+    if not improved and champ_model is not None:
+        new_version, best_weighted_csr = mlflow_log_run(
+            train_param=train_param,
+            model=champ_model,
+            mappings=mappings,
+            best_param=champ_params,
+            best_metrics=champ_metrics,
+            train_csr=train_csr,
+            popular_item_ids=popular_item_ids,
+            movie_id_dict=movie_id_dict
+        )
+    # Simply store new model if old champ not won or not available
+    else:
+       new_version, best_weighted_csr = mlflow_log_run(
+            train_param=train_param,
+            model=model,
+            mappings=mappings,
+            best_param=best_param,
+            best_metrics=best_metrics,
+            train_csr=train_csr,
+            popular_item_ids=popular_item_ids,
+            movie_id_dict=movie_id_dict
+        )         
     
     # Updates the champ model functionality if new model is better than old champ model.
-    if improved:
-        update_champ_model(
-            new_version=new_version,
-            best_weighted_csr=best_weighted_csr
-        )
+    update_champ_model(
+        new_version=new_version,
+        best_weighted_csr=best_weighted_csr
+    )
 
     # Return train response
     return TrainResponse(best_param=best_param, best_metrics=metrics_ls[best_idx])

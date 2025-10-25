@@ -47,6 +47,19 @@ class ALS_Metrics():
 # ALS functionality code
 # _________________________________________________________________________________________________________
 
+def csr_fingerprint(X) -> str:
+    import zlib
+    h = 0
+    for arr in (X.indptr, X.indices, X.data):
+        h = zlib.crc32(arr.view(np.uint8), h)
+    return f"{h & 0xffffffff:08x}"
+
+def _set_seed(seed: int) -> None:
+    np.random.seed(seed)
+    random.seed(seed)
+
+
+
 def get_popular_items(
         df: pd.DataFrame,
         top_n: int = 50,
@@ -274,11 +287,16 @@ def als_grid_search(
     else:
         sampled_combo_iter = combo_iter
 
+    # inside als_grid_search(...)
+    RUN_SEED = 123456  # or derive from your data snapshot for reproducible-by-snapshot runs
+    _set_seed(RUN_SEED)
+
     for idx, (K1, B, factors, reg, iters, alpha) in enumerate(sampled_combo_iter):
         print(f"\n=== Trying: BM25(K1={K1}, B={B}, alpha={alpha}), ALS(factors={factors}, reg={reg}, iters={iters}) ===")
 
         # Compute weighted data
         train_weighted_csr = bm25_weight(train_csr, K1= K1, B=B).tocsr()
+        # print(f"\nFingerprint of train_weighted_csr: {csr_fingerprint(train_weighted_csr)}")
         if alpha != 1.0:
             train_weighted_csr = train_weighted_csr * float(alpha)
 
@@ -287,12 +305,13 @@ def als_grid_search(
             factors=factors,
             regularization=reg,
             iterations=iters,
+            num_threads=1,
         )
         print("\nTrain model...")
         model.fit(train_weighted_csr)
 
         # Evaluate model results
-        metrics = evaluate_als(model, train_weighted_csr, test_csr, evaluation_set, K=K, num_threads=0, show_progress=True)
+        metrics = evaluate_als(model, train_weighted_csr, test_csr, evaluation_set, K=K, num_threads=1, show_progress=True)
         print(f"prec_@_k= {metrics.prec_at_k}")
         print(f"map_@_k= {metrics.map_at_k}")
         
