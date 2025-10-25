@@ -1,41 +1,41 @@
-// {
-//   "version": "0.2.0",
-//   "configurations": [
-//     {
-//       "name": "Attach to Python in Docker (debugpy)",
-//       "type": "python",
-//       "request": "attach",
-//       "connect": { "host": "localhost", "port": 5678 },
-//       "justMyCode": true,
-//       "pathMappings": [
-//         { "localRoot": "${workspaceFolder}", "remoteRoot": "/app" }
-//       ]
-//     }
-//   ]
-// }
-
 {
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Debug FastAPI (mlflow_example_4)",
+      "name": "Attach to Python in Docker (debugpy)",
       "type": "python",
-      "request": "launch",
-      "module": "uvicorn",
-      "args": [
-        "src.api.movie_rec_api_and_mlflow:app",  
-        "--host", "127.0.0.1",
-        "--port", "8000",
-        "--reload"
-      ],
-      "env": {
-        "MLFLOW_TRACKING_URI": "http://127.0.0.1:5000",
-        "MLFLOW_EXPERIMENT_NAME": "als_movie_rec",
-        "MODEL_NAME": "als_model_versioning"
-      },
-      "console": "integratedTerminal",
+      "request": "attach",
+      "connect": { "host": "localhost", "port": 5678 },
       "justMyCode": true,
-      "cwd": "${workspaceFolder}"
+      "pathMappings": [
+        { "localRoot": "${workspaceFolder}", "remoteRoot": "/app" }
+      ]
     }
   ]
 }
+
+// {
+//   "version": "0.2.0",
+//   "configurations": [
+//     {
+//       "name": "Debug FastAPI (mlflow_example_4)",
+//       "type": "python",
+//       "request": "launch",
+//       "module": "uvicorn",
+//       "args": [
+//         "src.api.movie_rec_api_and_mlflow:app",  
+//         "--host", "127.0.0.1",
+//         "--port", "8000",
+//         "--reload"
+//       ],
+//       "env": {
+//         "MLFLOW_TRACKING_URI": "http://127.0.0.1:5000",
+//         "MLFLOW_EXPERIMENT_NAME": "als_movie_rec",
+//         "MODEL_NAME": "als_model_versioning"
+//       },
+//       "console": "integratedTerminal",
+//       "justMyCode": true,
+//       "cwd": "${workspaceFolder}"
+//     }
+//   ]
+// }
