@@ -160,6 +160,10 @@ def prepare_data(
     print(f"\nOriginal df shape: {df.shape}")
     print(f"Original df:\n{df.head(20)}")
 
+    user_counts = df['userId'].value_counts()
+    print(f"\nuser_counts of original df \n{user_counts}")
+    print(f"\nNumber of users with more than 5 ratings: {(df['userId'].value_counts() > 5).sum()}")
+
     # Clean data and convert types
     df = df.dropna(subset=["userId", "movieId", "rating"])
     df["userId"] = df["userId"].astype(np.int64)
@@ -178,7 +182,7 @@ def prepare_data(
     print(f"\nData after filtering by threshold {pos_threshold}: {df_pos.shape}")
     print(f"Data after filtering by threshold {pos_threshold}:\n{df_pos.head(10)}")
     
-    # Here we wanne find the rows per user with the latest timestamp -> newest datas
+    # Here we wanne find the rows per user with the latest timestamp -> newest data
     # This newest data will be used as test dataset. If we have multiple rows per user with same timestampe, all will be used as train data
     latest_ts = df_pos.groupby("userId")["timestamp"].transform("max")
     df_pos["is_test"] = (df_pos["timestamp"] == latest_ts)
@@ -200,6 +204,12 @@ def prepare_data(
     # Split data in train and test data
     train_df = df_pos.loc[~df_pos["is_test"]]
     test_df = df_pos.loc[df_pos["is_test"]]
+    
+    print(f"\nuser_counts after last df filter set:\n{df['userId'].value_counts()}")
+
+    user_counts = df_pos['userId'].value_counts()
+    print(f"\nuser_counts after last df filter\n{user_counts}")
+    print(f"\nNumber of users with more than 5 ratings: {(df_pos['userId'].value_counts() > 5).sum()}")
 
     # Build mappings 
     user_uniques = df_pos["userId"].unique()
@@ -237,7 +247,7 @@ def prepare_data(
 
     # Boolean mask of eligible users: >=5 train AND >=1 test
     print(f"\nTest data entries before masking: {test_csr.nnz}")
-    evaluation_set_mask = (train_counts >= 5) & (test_counts >= 1)
+    evaluation_set_mask = (train_counts >= 4) & (test_counts >= 1)
 
     # Filter evaluation test set -> Only test samples wihich fullfill evaluation_set_mask condition
     # will stay
@@ -246,7 +256,7 @@ def prepare_data(
         mask=evaluation_set_mask
     )
 
-    # print(f"Test data entries after masking: {test_csr.nnz}")
+    print(f"Test data entries after masking: {test_csr_masked.nnz}")
     # ratio = evaluation_set_mask.sum() / train_coo.shape[0] * 100
     # print(f"\nTHe evaluation set includes {ratio:.2f} % of the original train/test data.")
 
@@ -291,6 +301,8 @@ def evaluate_als(
     '''
     train_user_item = train_coo.tocsr()
     test_user_item  = test_coo.tocsr()
+
+    print(f"\nTest data entries after masking in evaluation: {test_user_item.nnz}")
 
     if test_user_item.nnz == 0:
         raise ValueError("Test matrix is empty (nnz=0). Use train_percentage < 1.0 or leave-k-out for evaluation.")
@@ -412,6 +424,8 @@ def als_grid_search(
     # inside als_grid_search(...)
     RUN_SEED = 123456  # or derive from your data snapshot for reproducible-by-snapshot runs
     _set_seed(RUN_SEED)
+
+    print(f"\nTest data entries after masking in grid search: {test_csr.nnz}")
 
     for idx, (K1, B, factors, reg, iters, alpha) in enumerate(sampled_combo_iter):
         print(f"\n=== Trying: BM25(K1={K1}, B={B}, alpha={alpha}), ALS(factors={factors}, reg={reg}, iters={iters}) ===")
@@ -557,6 +571,8 @@ def grid_search_advanced(
         "reg": 0.1,
         "iters": 25
     }
+
+    print(f"\nTest data entries after masking: {test_csr.nnz}")
 
     # Grid search with varying K1, B1 values and fixed base line 
     # Do grid search 
