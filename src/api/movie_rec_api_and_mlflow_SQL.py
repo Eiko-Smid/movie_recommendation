@@ -96,23 +96,16 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
     Parameters
     ----------
-    train_param : TrainRequest
+    train_param: TrainRequest
         Training request parameters containing 'n_rows', which limits the
         number of rows read from the ratings CSV (0 = load full dataset).
 
     Returns
     -------
-    Tuple[pd.DataFrame, pd.DataFrame]
-        A tuple (df_ratings, df_movies) where:
-        - df_ratings : Ratings dataset (columns: userId, movieId, rating, timestamp)
-        - df_movies  : Movie metadata (columns: movieId, title, genres)
-
-    Raises
-    ------
-    HTTPException
-        If a CSV file cannot be found (404) or if reading fails (400).
-    
-    TODO: Replace this by a data base functionality.
+    df_ratings: pd.DataFrame
+        Data frame were each rows contains a pair of (userId, movieId, rating, timestamp)
+    df_movies: pd.DataFrame
+        Data frame were each rows contains a pair of (movieId, title, genres)
     '''
     # Define file paths
     data_path_ratings = "data/ml-20m/ratings.csv"
@@ -158,21 +151,16 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
 #     Parameters
 #     ----------
-#     train_param : TrainRequest
+#     train_param: TrainRequest
 #         Training request parameters containing 'n_rows', which limits the
 #         number of rows read from the ratings CSV (0 = load full dataset).
 
 #     Returns
 #     -------
-#     Tuple[pd.DataFrame, pd.DataFrame]
-#         A tuple (df_ratings, df_movies) where:
-#         - df_ratings : Ratings dataset (columns: userId, movieId, rating, timestamp)
-#         - df_movies  : Movie metadata (columns: movieId, title, genres)
-
-#     Raises
-#     ------
-#     HTTPException
-#         If connection to the database fails or (500) or the queries fail (400).
+#     df_ratings: pd.DataFrame
+#         Data frame were each rows contains a pair of (userId, movieId, rating, timestamp)
+#     df_movies: pd.DataFrame
+#         Data frame were each rows contains a pair of (movieId, title, genres)
 #     '''
     
 #     # Load environment variables and DB connection URL
@@ -229,32 +217,47 @@ def prepare_training(
         csr_matrix,
         csr_matrix,
         Mappings,
-        np.ndarray,
         Dict[int, str],
         List[int]
     ]:
     '''
     Prepares the data for ALS model training.
 
-    Performs a random 80% sampling of the ratings DataFrame for variability
-    between runs, splits the data into train/test CSR matrices, and builds
-    supporting lookup structures (ID mappings, movie ID dictionary, and
-    a list of popular movies for cold-start recommendations).
+    Prepares the data (clean nans, train/test/split/test csr filtering) and builds supporting
+    lookup structures (ID mappings, movie ID dictionary, and a list of popular movies for 
+    cold-start recommendations).
 
     Parameters
     ----------
     df_ratings : pd.DataFrame
-        The ratings dataset loaded via _load_data().
+        The ratings dataset loaded
     df_movies : pd.DataFrame
         The movies dataset loaded via _load_data().
     train_param : TrainRequest
-        Training configuration containing 'pos_threshold' and
-        'n_popular_movies'.
+        Training configuration containing 'pos_threshold' and 'n_popular_movies'.
 
     Returns
     -------
-    Tuple[pd.DataFrame, csr_matrix, csr_matrix, Mappings, Dict[int, str], List[int]]
-        (df_ratings, train_csr, test_csr, mappings, evaluation_set, movie_id_dict, popular_item_ids)
+    df_ratings: pd.DataFrame
+        Data frame were each rows contains a pair of (userId, movieId, rating, timestamp)
+    train_csr: csr_matrix
+        The train csr matrix (user-item) used for training the model.
+    test_csr: csr_matrix
+        The original test csr matrix.
+    test_csr_masked: csr_matrix
+        The filtered csr matrix used for evaluating the model. All train rows that have
+        less than 5 train entries and 1 test entries will be set to zero. The zero lines
+        will be automatically ignored when computing the evaluation metrics.
+    mappings: Mappings
+        Stores the relevant mappings needed to transfer the df user/item ids to the 
+        user/item ids of the csr matrices.
+    movie_id_dict: Dict[int, str]
+        Lookup table which is a set of tuples were each tuple is a pair of the orginal movie
+        id and the movie id in csr format.
+    popular_item_ids: List[int]
+        List of popular movie that are used for the case that the user is not know in the 
+        data and that there is no information of movies the user likes. Solves the cold
+        start problem in the recommendation part.
     '''
     # Only use random subset of df
     # perc = 0.8
@@ -282,7 +285,7 @@ def prepare_training(
         threshold=train_param.pos_threshold)
     print(f"\nShape of popular_item_ids is {len(popular_item_ids)}")
 
-    return df_ratings, train_csr, test_csr, test_csr_masked, mappings, evaluation_set, movie_id_dict, popular_item_ids
+    return df_ratings, train_csr, test_csr, test_csr_masked, mappings, movie_id_dict, popular_item_ids
 
 
 def mlflow_log_run(
@@ -303,9 +306,9 @@ def mlflow_log_run(
     '''
     Logs parameters, metrics, and artifacts to MLflow and registers the model.
 
-    Creates a new MLflow run, logs the full grid search configuration, the best
-    parameters, metrics, and a serialized model state. Then registers the model
-    version, tags it with evaluation metrics, and retrieves the current
+    Creates a new MLflow run, logs the full grid search configuration, the best 
+    parameters, metrics, and a serialized model state. Then registers the
+    model version, tags it with evaluation metrics, and retrieves the current 
     Champion’s parameters (if any) for comparison.
 
     Parameters
@@ -314,8 +317,11 @@ def mlflow_log_run(
         The full training configuration used for this run.
     model : AlternatingLeastSquares
         The trained ALS model.
+    used_grid_param: Sequence[dict[int, float]]
+        The grid parameters that have actually been used for training the model.
     mappings : Mappings
-        User/item index mappings used in the CSR matrices.
+        Stores the relevant mappings needed to transfer the df user/item ids to the 
+        user/item ids of the csr matrices.
     best_param : BestParameters
         The best parameter combination found during grid search.
     best_metrics : ALS_Metrics
@@ -356,7 +362,7 @@ def mlflow_log_run(
         )
 
         # Log best params from grid search
-        mlflow.log_dict(asdict(best_param), "best_params.json")
+        mlflow.log_dict(best_param.model_dump(), "best_params.json")
 
         # Log metrics of model training
         mlflow.log_metrics({
@@ -369,9 +375,6 @@ def mlflow_log_run(
         artifacts_dir.mkdir(parents=True, exist_ok=True)     
         artifacts_path = artifacts_dir / "model_state.joblib"
         
-        # Store model with joblib
-        # joblib.dump(model, model_path)
-
         # Recompute the BM25-weighted matrix that matches the *best* params
         best_weighted_csr = bm25_weight(train_csr, K1=best_param.best_K1, B=best_param.best_B).tocsr()
 
@@ -431,41 +434,47 @@ def mlflow_log_run(
 def did_model_improve(
         train_csr: csr_matrix,
         test_csr: csr_matrix,
-        evaluation_set: np.ndarray,
         best_metrics: ALS_Metrics,
         improve_threshold: float = 0.002
     ) -> Tuple[
         bool,
         Optional[AlternatingLeastSquares],
-        Optional[List[ALS_Metrics]],
+        Optional[ALS_Metrics],
         Optional[BestParameters]
     ]:
     '''
-    """
-    Compares the new model against the current Champion model.
+    Compares the new model against the retrained Champion model. 
 
-    If no Champion exists yet, the function immediately returns True.
-    Otherwise, it retrains the Champion model using its saved parameters on
-    the new data and compares MAP@K values to determine whether the new model
-    is an improvement.
+    If no champion model exists the improved parameter will automatically be set to true.
+    Otherwise it retrains a new als instance with the parameters of the champion model 
+    and evaluates the model. The resulting map_at_k values is then compared to the map_at_k
+    value of the challenger model. 
+
+    If the challenger models wins, the improved parameter is set to true. 
 
     Parameters
     ----------
-    champ_params : Optional[dict]
-        The hyperparameters of the current Champion model, or None if none exist.
-    train_csr : csr_matrix
-        The current training CSR matrix.
-    test_csr : csr_matrix
-        The current test CSR matrix.
+    train_csr: csr_matrix
+        User–item training matrix used to fit each ALS model.
+    test_csr: csr_matrix
+        User–item test matrix used to evaluate each model configuration.
     best_metrics : ALS_Metrics
-        The metrics of the newly trained model.
+        The metrics of the challanger model.
+    improve_threshold: float
+        Only if the metrics of the challenger model is bigger than the metric of the champ
+        model + this threshold, the im,proved flag is set to true.
 
     Returns
     -------
-    bool
-        True if the new model performs better (higher MAP@K) or if
-        no Champion exists; False otherwise.
-    """
+    improved: bool
+        True if the new model performs better (higher MAP@K) or if no Champion exists,
+        False otherwise.
+    champ_model: Optional[AlternatingLeastSquares]
+        A new instance of ALS trained with the best parameters of the current Champ model.
+    champ_metrics: Optional[ALS_Metrics]
+        The metrics of the champ model (prec_@_k, map_@_k)
+    champ_params: Optional[BestParameters]
+        The parameter combination the champ model was trained with.
     '''
     champ_model = None
     champ_metrics = None
@@ -721,8 +730,7 @@ def _load_champion_params(model_name: str) -> dict | None:
 # State holder
 # _________________________________________________________________________________________________________
 
-@dataclass
-class BestParameters:
+class BestParameters(BaseModel):
     '''Class to store the best model parameters.'''
     best_K1: int
     best_B: float
@@ -789,6 +797,7 @@ class TrainCSRStore:
             return None
 
 
+# Init the csr matrix store obj
 TRAIN_CSR_STORE = TrainCSRStore(CHAMPION_TRAIN_CSR_PATH)
 
 
@@ -910,7 +919,11 @@ async def lifespan(app: FastAPI):
     # or save to disk if needed
 
 
-app = FastAPI(title="Retrain + MLflow (simple)", lifespan=lifespan)
+app = FastAPI(
+    title="Movie Recommendation API",
+    description="Movie recommendation system for training recommender model and make recommendation for users.",
+    lifespan=lifespan
+)
 
 
 @app.exception_handler(ValueError)
@@ -936,8 +949,42 @@ async def unhandled_exception_handler(_: Request, exc: Exception):
     )
 
 
-@app.post("/train", response_model=TrainResponse)
+@app.post(
+        "/train",
+        response_model=TrainResponse,
+        summary="Train or update the ALS recommendation model",
+        description=(
+        "Loads ratings + movies, prepares CSR matrices, runs a 3-stage advanced grid "
+        "search to maximize MAP@K, compares the challenger to the current Champion, "
+        "logs everything to MLflow, and updates the Champion if improved."
+    ),
+    response_description="Best hyperparameters and metrics found during training."
+)
 def train_endpoint(train_param: TrainRequest):
+    '''
+    Trains or updates the ALS recommendation model using the provided training parameters.
+
+    The endpoint:
+      1. Loads and prepares the movie rating data.
+      2. Performs a three-stage grid search (`grid_search_advanced`) to find the best
+         challanegr model
+      3. Compares the new model against the current Champion model (if it exists).
+      4. Logs all parameters, metrics, and artifacts to MLflow.
+      5. Updates the current champion model. After every update the production model
+         gets updated automatically as well.
+
+    Parameters
+    ----------
+    train_param : TrainRequest
+        Request body containing the ALS and preprocessing parameters such as BM25 settings,
+        ALS hyperparameters, and dataset options.
+
+    Returns
+    -------
+    TrainResponse
+        Object containing the best hyperparameters 'best_param' and corresponding evaluation
+        metrics 'best_metrics' from the training run.
+    '''
     # Load data
     df_ratings, df_movies = _load_data(train_param=train_param)
 
@@ -948,7 +995,6 @@ def train_endpoint(train_param: TrainRequest):
     test_csr,
     test_csr_masked,
     mappings,
-    evaluation_set,
     movie_id_dict,
     popular_item_ids,
     ) = prepare_training(
@@ -984,7 +1030,6 @@ def train_endpoint(train_param: TrainRequest):
     improved, champ_model, champ_metrics, champ_params = did_model_improve(
         train_csr=train_csr,
         test_csr=test_csr_masked,
-        evaluation_set=evaluation_set,
         best_metrics=best_metrics
     )
 
@@ -1027,8 +1072,37 @@ def train_endpoint(train_param: TrainRequest):
 
 
 # Define recommendation endpoint
-@app.post("/recommend", response_model=RecommendResponse)
+@app.post(
+    "/recommend",
+    response_model=RecommendResponse,
+    summary="Get top-N movie recommendations for a user",
+    description=(
+        "Uses the in-memory Champion ALS model to recommend movies. "
+        "Handles cold-start via fold-in if `new_user_interactions` are provided; "
+        "otherwise falls back to popular items."
+    ),
+    response_description="Recommended movie IDs (and titles if available)."
+)
 def recommend_endpoint(recom_param: RecommendRequest):
+    '''
+    Generates a personalized movie recommendation if the given user is part of the matrix 
+    the current champ model was trained with. If thats not the case but some initial 
+    information about the users favorit movies are provided the recommendations are 
+    getting computed on the fly. 
+    If none of both is the case, the user get recommendations based of a list of popular 
+    movies.
+
+    Parameters
+    ----------
+    recom_param : RecommendRequest
+        Class including the user id, the number movies to recommend and a list of movies
+        the user likes. The list is for the case that the user id is not known.
+    Returns
+    -------
+    RecommendResponse
+        Endpoint returns the user_id, the ids of the recommended movies as well as the
+        movie names.
+    '''
     # Check if Champ model exists, if not raise Exception
     if CHAMP_MODEL is None:
         raise HTTPException(status_code=503, detail="Champion model not loaded yet")

@@ -3,7 +3,8 @@ import os
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional, Sequence, Tuple, Mapping, Iterable, Any, TypedDict
+from typing import Dict, List, Optional, Sequence, Tuple, Mapping, Iterable, Any, TypedDict, Union
+from pydantic import BaseModel
 
 import numpy as np
 import pandas as pd
@@ -32,8 +33,7 @@ class Mappings():
     item_id_to_index: Dict[int, int]
 
 
-@dataclass
-class ALS_Metrics():
+class ALS_Metrics(BaseModel):
     '''
     Metrics to compare the ALS model performance.
     '''
@@ -47,13 +47,16 @@ class ALS_Metrics():
 # _________________________________________________________________________________________________________
 
 def csr_fingerprint(X) -> str:
+    '''Create hash of matrices adn other stuff to check if they are consistent through runs.'''
     import zlib
     h = 0
     for arr in (X.indptr, X.indices, X.data):
         h = zlib.crc32(arr.view(np.uint8), h)
     return f"{h & 0xffffffff:08x}"
 
+
 def _set_seed(seed: int) -> None:
+    '''Set see for reproduceability.'''
     np.random.seed(seed)
     random.seed(seed)
 
@@ -65,8 +68,8 @@ def get_popular_items(
         ) -> List[int]:
     '''
     This function will be frequently used to build a list containing the popular items.
-    This popular items can the be used for the case that a new user needs to get movie
-    recommendations. 
+    This popular items can the be used for the case that a new user where no preferences
+    are known needs to get movie recommendations. 
     '''
     # Keep only positives (same threshold as your training)
     df_pos = df[df["rating"] >= threshold]
@@ -98,18 +101,18 @@ def build_binary_coo(
     return coo_matrix((data, (uidx, iidx)), shape=(n_users, n_items), dtype=np.float32)
 
 
-def apply_mask_to_test_csr(
-        test_csr: csr_matrix,
-        evaluation_set_mask: np.ndarray
+def apply_mask_to_csr(
+        csr_matrix: csr_matrix,
+        mask: np.ndarray
 ) -> csr_matrix:
     '''
-    Apply a mask to the test csr matrix to ensure that only relevant rows in the data
-    will be used for evaluation.
+    Apply's the given mask to the given csr matrix to zero out rows were the mask
+    has the value false, the other rows stay as they are.
     '''
-    n_users = test_csr.shape[0]
-    row_mask = evaluation_set_mask.astype(int)
+    n_users = csr_matrix.shape[0]
+    row_mask = mask.astype(int)
     D = diags(row_mask, 0, shape=(n_users, n_users), format="csr")
-    test_csr_masked = D.dot(test_csr)
+    test_csr_masked = D.dot(csr_matrix)
 
     return test_csr_masked
 
@@ -117,10 +120,42 @@ def apply_mask_to_test_csr(
 def prepare_data(
         df: pd.DataFrame,
         pos_threshold: float = 4.0,
-        ) -> Tuple[csr_matrix, csr_matrix, Mappings, np.ndarray]:
+        ) -> Tuple[csr_matrix, csr_matrix, csr_matrix, Mappings, np.ndarray]:
     '''
-    Prepare the data by dropping nons, keep only ratings > threshold, split into train and test and 
-    build scr matrixes of them. Returns the train, test csr matrices and the mappings.
+    Prepare the data by dropping nans, keep only ratings > threshold, split into train
+    and test and build scr matrixes of them. The test csr matrix will be filtered. 
+    All train rows that have lessthan 5 train entries and 1 test entries will be set
+    to zero. The zero lines will be automaticallyignored when computing the evaluation
+    metrics. Returns the train, test csr filtered test csr matrices, the mappings and
+    the evaluation_set_mask used for filtering the test csr matrix.
+
+    Parameters
+    ----------
+    df (pd.DataFrame):
+            Input interactions with columns:
+            - `userId` (int): user identifier (will be cast to int64).
+            - `movieId` (int): item identifier (will be cast to int64).
+            - `rating` (float): explicit rating (will be cast to float32).
+            - `timestamp` (int): interaction time (will be cast to int64).
+    pos_threshold (float, optional):
+            Minimum rating to treat an interaction as positive (kept in the dataset).
+            Defaults to 4.0.
+
+    Returns
+    -------
+    train_csr: csr_matrix:
+        The train csr matrix (user-item) used for training the model.
+    test_csr: csr_matrix:
+        Binary user–item matrix for the full test split (unmasked).
+    test_csr_masked: csr_matrix
+        The filtered csr matrix used for evaluating the model. All train rows that have
+        less than 5 train entries and 1 test entries will be set to zero. The zero lines
+        will be automatically ignored when computing the evaluation metrics.
+    mappings: Mappings:
+        Stores the relevant mappings needed to transfer the df user/item ids to the user/item ids of 
+        the csr matrices.
+    evaluation_set_mask: np.ndarray:
+        Boolean mask where `True` marks users with ≥5 train items and ≥1 test item.
     '''
     print(f"\nOriginal df shape: {df.shape}")
     print(f"Original df:\n{df.head(20)}")
@@ -201,20 +236,17 @@ def prepare_data(
     test_counts = np.diff(test_csr.indptr)
 
     # Boolean mask of eligible users: >=5 train AND >=1 test
-    # TODO Use this mask in the evaluation function instead of filtering the test set right awy here!
     print(f"\nTest data entries before masking: {test_csr.nnz}")
     evaluation_set_mask = (train_counts >= 5) & (test_counts >= 1)
 
     # Filter evaluation test set -> Only test samples wihich fullfill evaluation_set_mask condition
     # will stay
-    
-    test_csr_masked = apply_mask_to_test_csr(
-        test_csr=test_csr,
-        evaluation_set_mask=evaluation_set_mask
+    test_csr_masked = apply_mask_to_csr(
+        csr_matrix=test_csr,
+        mask=evaluation_set_mask
     )
 
     # print(f"Test data entries after masking: {test_csr.nnz}")
-
     # ratio = evaluation_set_mask.sum() / train_coo.shape[0] * 100
     # print(f"\nTHe evaluation set includes {ratio:.2f} % of the original train/test data.")
 
@@ -223,19 +255,40 @@ def prepare_data(
 
 def evaluate_als(
         model: AlternatingLeastSquares,
-        train_coo: csr_matrix,
-        test_coo: csr_matrix,
+        train_coo: Union[csr_matrix, coo_matrix],
+        test_coo: Union[csr_matrix, coo_matrix],
         K: int = 10,
         num_threads: int = 0,
         show_progress: bool = False
         ) -> ALS_Metrics:
-    """
-    Evaluate ALS with precision@K and MAP@K using implicit.evaluation.
-    Expects:
-      - model: trained AlternatingLeastSquares
-      - train_coo: USER×ITEM sparse matrix (COO) for train (used to filter seen items)
-      - test_coo:  USER×ITEM sparse matrix (COO) for test (ground-truth relevance)
-    """
+    '''
+    Evaluates a trained Alternating Least Squares (ALS) model using Precision@K
+    and Mean Average Precision@K (MAP@K) metrics from `implicit.evaluation`.
+
+    Parameters
+    ----------
+    model : AlternatingLeastSquares
+        The trained ALS model to evaluate.
+    train_coo : Union[csr_matrix, coo_matrix]
+        User–item training matrix for evaluation.
+    test_coo : Union[csr_matrix, coo_matrix]
+        User–item test matrix that contains the ground-truth itemsthat should be 
+        recommended to users.
+    K : int, optional
+        Cut-off rank for computing Precision@K and MAP@K. Default is 10.
+    num_threads : int, optional
+        Number of CPU threads to use during evaluation. Default is 0 (let the
+        library decide).
+    show_progress : bool, optional
+        If True, displays a progress bar during metric computation. Default is False.
+
+    Returns
+    -------
+    ALS_Metrics
+        A dataclass instance containing the following evaluation metrics:
+        - `prec_at_k`: Precision@K of the ALS model.
+        - `map_at_k`:  Mean Average Precision@K of the ALS model.
+    '''
     train_user_item = train_coo.tocsr()
     test_user_item  = test_coo.tocsr()
 
@@ -277,11 +330,60 @@ def als_grid_search(
     List[ALS_Metrics],
     List[Dict[str, Any]],
     Optional[int],
+    Dict[int, float]
 ]:
     '''
-    Does a ASL grid search by the given parameters (bm25_K1_list, bm25_B_list, factors_list, reg_list,
-    iters_list) based on maximizing the metric "map_@_k". Returns the best model, all metrics 
-    (precision_@_k, map_@_k) and all parameters and the index of the best parameter combination (best_idx).
+    Performs a grid search over BM25 and ALS hyperparameters to find the best‐performing
+    ALS model based on the "map_@_k" metric.
+
+    If n_samples > 0 then only a radnomly sampled part of all aprameter combinations are
+    used to train the model. This part is optinal and can be done to speed up the training
+    process.
+
+    For each parameter combination, the training matrix is BM25-weighted (and optionally
+    scaled by `alpha`), an ALS model is fitted, and evaluation metrics are computed.
+    Returns the best model, all metric objects, the corresponding parameter sets,
+    the index of the best combination, and a record of all parameter configurations.
+
+    Parameters
+    ----------
+    train_csr : csr_matrix
+        User–item training matrix used to fit ALS model.
+    test_csr : csr_matrix
+        User–item test matrix used to evaluate each model configuration.
+    bm25_K1_list : Sequence[int], optional
+        List of BM25 K1 parameters controlling term saturation. Default is (100, 200).
+    bm25_B_list : Sequence[float], optional
+        List of BM25 B parameters controlling document-length normalization. Default is (0.8, 1.0).
+    factors_list : Sequence[int], optional
+        Number of latent factors (embedding dimensions) to test for ALS. Default is (128, 256).
+    reg_list : Sequence[float], optional
+        Regularization strengths to test. Default is (0.10, 0.20).
+    iters_list : Sequence[int], optional
+        Number of ALS training iterations to perform. Default is (25,).
+    K : int, optional
+        Cut-off rank K for computing Precision@K and MAP@K. Default is 10.
+    n_samples : int, optional
+        If > 0, randomly samples that many parameter combinations from the full grid 
+        instead of using all. Set zero for full grid.
+    alpha_list : Sequence[float], optional
+        Optional multiplicative weighting factors applied to the BM25-weighted matrix.
+        Default is (1.0,).
+    num_threads : int, optional
+        Number of CPU threads to use during ALS fitting. Default is 0 (let the library decide).
+
+    Returns
+    -------
+    best_model : AlternatingLeastSquares or None
+        The trained ALS model achieving the highest MAP@K score, or None if no model was trained.
+    metrics_ls : list of ALS_Metrics
+        List of metric objects, each containing Precision@K and MAP@K for one parameter set.
+    parameter_ls : list of dict
+        List of dictionaries describing the parameters corresponding to each metrics entry.
+    best_idx : int or None
+        Index of the best parameter combination within `parameter_ls`, or None if no model was trained.
+    actual_params : dict[int, float]
+        Dictionary logging all parameter combinations tried during the grid search.
     '''
     actual_params = []
 
@@ -374,13 +476,78 @@ def grid_search_advanced(
     reg_list: Sequence[float] = (0.10, 0.20),
     iters_list: Sequence[int] = (25,),
     K: int = 10,
-    num_threads: int = 1,
+    num_threads: int = 0,
     show_progress: bool = True,
     n_samples: int = 12,
     f_finetune_perc: Sequence[float] = (0.85, 1.0, 1.15),
     r_finetune_perc: Sequence[float] = (0.75, 1.0, 1.25),
     alpha_list: Sequence[float] = (1.0, 5.0, 10.0, 20.0, 40.0)
-):
+) -> Tuple[
+    Optional[AlternatingLeastSquares],
+    List[ALS_Metrics],
+    List[Dict[str, Any]],
+    Optional[int],
+    Dict[int, float]
+]:
+    '''
+    Performs a three staged grid search for finding the best ALS model.
+
+    First stage:
+        Find best K1 and B1 values for a fixed baseline parameter set.
+    
+    Second stage:
+        Using the obtained best K1 and B1 weighting values do a big search 
+        to find the parameters near the optimum.
+
+    Third stage:
+        Use the best found parameter so far and do a fine grid search, to 
+        optimize the model performance.
+    
+    Parameters
+    ----------
+    train_csr : csr_matrix
+        User–item training matrix used to fit ALS model.
+    test_csr : csr_matrix
+        User–item test matrix used to evaluate each model configuration.
+    bm25_K1_list : Sequence[int], optional
+        List of BM25 `K1` parameters for Stage 1.
+    bm25_B_list : Sequence[float], optional
+        List of BM25 `B` parameters for Stage 1.
+    factors_list : Sequence[int], optional
+        List of ALS latent factor counts to explore in Stage 2.
+    reg_list : Sequence[float], optional
+        List of ALS regularization values to explore in Stage 2.
+    iters_list : Sequence[int], optional
+        List of ALS iteration counts to explore in Stage 2.
+    K : int, optional
+        Rank cut-off for computing Precision@K and MAP@K metrics.
+    num_threads : int, optional
+        Number of CPU threads to use for ALS training.
+    show_progress : bool, optional
+        If True, prints progress information for each grid search stage. 
+    n_samples : int, optional
+        If > 0, randomly samples that many parameter combinations during Stage 2 instead
+        of testing the full grid.
+    f_finetune_perc : Sequence[float], optional
+        Multiplicative factors applied to the best Stage 2 `factors` value for fine-tuning.
+    r_finetune_perc : Sequence[float], optional
+        Multiplicative factors applied to the best Stage 2 `reg` value for fine-tuning.
+    alpha_list : Sequence[float], optional
+        List of `alpha` weighting values (post-BM25 scaling) used in Stage 2.
+    
+    Returns
+    -------
+    stage_3_model : AlternatingLeastSquares or None
+        The final fine-tuned ALS model from Stage 3 that achieved the highest MAP@K score.
+    stage_3_metr : list of ALS_Metrics
+        Evaluation metrics (Precision@K and MAP@K) for all Stage 3 configurations.
+    stage_3_param : list of dict
+        List of parameter dictionaries corresponding to each Stage 3 metric result.
+    stage_3_best_idx : int or None
+        Index of the best parameter combination within `stage_3_param`.
+    all_used_params : list of dict
+        Aggregated list of all parameter combinations tested across all three stages.
+    '''
     # List of dict containing actual param used
     all_used_params = []
 
@@ -402,7 +569,8 @@ def grid_search_advanced(
         reg_list=[baseline["reg"]],
         iters_list=[baseline["iters"]],
         K=K,
-        alpha_list=(1.0,)
+        alpha_list=(1.0,),
+        num_threads=num_threads
     )
     all_used_params += actual_params
 
@@ -418,7 +586,8 @@ def grid_search_advanced(
         iters_list=iters_list,
         K=K,
         n_samples=n_samples,
-        alpha_list=alpha_list
+        alpha_list=alpha_list,
+        num_threads=num_threads
     )
     all_used_params += actual_params
 
@@ -438,7 +607,8 @@ def grid_search_advanced(
         reg_list=stage_3_regs,
         iters_list=[stage_2_param[stage_2_best_idx]["iters"]],
         K=K,
-        alpha_list=(best_alpha, )
+        alpha_list=(best_alpha, ),
+        num_threads=num_threads
     )
     all_used_params += actual_params
 
@@ -475,8 +645,37 @@ def recommend_item(
     popular_item_ids: Optional[Sequence[int]] = None,       # list of original movieIds for cold-start fallback (optional)
 ) -> List[int]:
     '''
-    Recommends the top "n_movies_to_rec" movies for the given user id. Returns the movie ids of
-    the recommended movies as a list. 
+    Recommends the top-N movie IDs for a given user using the given trained ALS model.
+
+    If the given user is not part of the matrix that represents the data, the function 
+    first trys to compute new recommendation based on the new_user_interactions which
+    is a list of movies he likes. 
+    If this list is empty, then the user gets recommendations based on a list of popular
+    items. This solves the cold start problem.
+
+    Parameters
+    ----------
+    als_model : AlternatingLeastSquares
+        The trained ALS model used for generating recommendations.
+    data_csr : csr_matrix
+        The BM25-weighted user–item matrix that the final ALS model was trained on.
+        Must share the same user/item index mapping as `mappings`.
+    user_id : int
+        The original user identifier to recommend for (not CSR row index).
+    mappings : Mappings
+        Stores the relevant mappings needed to transfer the df user/item ids to the 
+        user/item ids of the csr matrices.
+    n_movies_to_rec : int, optional
+        Number of recommendations to return. 
+    new_user_interactions : Sequence[int] or None, optional
+        List of mvoies the user likes.
+    popular_item_ids : Sequence[int] or None, optional
+        List of movies used for the cold start case. This list guarantees user recommendation.
+
+    Returns
+    -------
+    recommendations: List[int]
+        List of 'n_movies_to_rec' recommendations for the given user.
     '''
     # Helper: map internal item indices -> original ids
     def map_items_back(item_idxs):
