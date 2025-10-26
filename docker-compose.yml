@@ -66,6 +66,27 @@ services:
       # Environment var for db.
       - ./.env:/app/.env
 
+  # Add streamlit
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: streamlit_app
+    depends_on:
+      - api      
+    ports:
+      - "8501:8501"
+    environment:
+      DB_URL: ${DB_URL}
+      API_URL: "http://api:8000" 
+    networks:
+      - default 
+    volumes:
+      - ./streamlit:/app     # mount local streamlit folder inside container at /app
+      - ./streamlit_cache:/root/.streamlit/cache # mount local cache folder inside container at /root/.streamlit/cache
+
+
+
   # 🕐 Scheduled Trainer (daily retraining)
   # Training can be manually started with: docker exec -it daily_trainer sh -c "curl -X POST http://api:8000/train -H 'Content-Type: application/json' -d @/data/train_payload.json
   trainer:

@@ -101,3 +101,6 @@ champ_store/
 
 # Ignore postgres db data
 postgres_data/
+
+# Ignore streamlit_cache
+streamlit_cache
