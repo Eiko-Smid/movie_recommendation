@@ -58,7 +58,6 @@ def _set_seed(seed: int) -> None:
     random.seed(seed)
 
 
-
 def get_popular_items(
         df: pd.DataFrame,
         top_n: int = 50,
@@ -98,6 +97,21 @@ def build_binary_coo(
     # Build coo matrix
     return coo_matrix((data, (uidx, iidx)), shape=(n_users, n_items), dtype=np.float32)
 
+
+def apply_mask_to_test_csr(
+        test_csr: csr_matrix,
+        evaluation_set_mask: np.ndarray
+) -> csr_matrix:
+    '''
+    Apply a mask to the test csr matrix to ensure that only relevant rows in the data
+    will be used for evaluation.
+    '''
+    n_users = test_csr.shape[0]
+    row_mask = evaluation_set_mask.astype(int)
+    D = diags(row_mask, 0, shape=(n_users, n_users), format="csr")
+    test_csr_masked = D.dot(test_csr)
+
+    return test_csr_masked
 
 
 def prepare_data(
@@ -190,25 +204,27 @@ def prepare_data(
     # TODO Use this mask in the evaluation function instead of filtering the test set right awy here!
     print(f"\nTest data entries before masking: {test_csr.nnz}")
     evaluation_set_mask = (train_counts >= 5) & (test_counts >= 1)
-    
-    n_users = train_csr.shape[0]
-    row_mask = evaluation_set_mask.astype(int)
-    D = diags(row_mask, 0, shape=(n_users, n_users), format="csr")
-    test_csr = D.dot(test_csr)
-    
-    print(f"Test data entries after masking: {test_csr.nnz}")
 
-    ratio = evaluation_set_mask.sum() / train_coo.shape[0] * 100
-    print(f"\nTHe evaluation set includes {ratio:.2f} % of the original train/test data.")
+    # Filter evaluation test set -> Only test samples wihich fullfill evaluation_set_mask condition
+    # will stay
+    
+    test_csr_masked = apply_mask_to_test_csr(
+        test_csr=test_csr,
+        evaluation_set_mask=evaluation_set_mask
+    )
 
-    return train_csr, test_csr, mappings, evaluation_set_mask
+    # print(f"Test data entries after masking: {test_csr.nnz}")
+
+    # ratio = evaluation_set_mask.sum() / train_coo.shape[0] * 100
+    # print(f"\nTHe evaluation set includes {ratio:.2f} % of the original train/test data.")
+
+    return train_csr, test_csr, test_csr_masked, mappings, evaluation_set_mask
 
 
 def evaluate_als(
         model: AlternatingLeastSquares,
         train_coo: csr_matrix,
         test_coo: csr_matrix,
-        evaluation_set: np.ndarray,
         K: int = 10,
         num_threads: int = 0,
         show_progress: bool = False
@@ -247,7 +263,6 @@ def evaluate_als(
 def als_grid_search(
     train_csr: csr_matrix,
     test_csr: csr_matrix,
-    evaluation_set: np.ndarray,
     bm25_K1_list: Sequence[int] = (100, 200),
     bm25_B_list: Sequence[float]  = (0.8, 1.0),
     factors_list: Sequence[int] = (128, 256),
@@ -255,7 +270,8 @@ def als_grid_search(
     iters_list: Sequence[int] = (25,),
     K: int = 10,
     n_samples: int = 0,
-    alpha_list: Sequence[float] = (1.0,)
+    alpha_list: Sequence[float] = (1.0,),
+    num_threads: int = 0
 ) -> Tuple[
     Optional[AlternatingLeastSquares],
     List[ALS_Metrics],
@@ -278,10 +294,13 @@ def als_grid_search(
     best_idx = None
 
     best_score = -np.inf
+
+    # Create grid param comb
     combo_iter = list(
         product(bm25_K1_list, bm25_B_list, factors_list, reg_list, iters_list, alpha_list)
     )
 
+    # Sample from the grid params comb
     if n_samples > 0:
         n_samples = min(n_samples, len(combo_iter))
         sampled_combo_iter = random.sample(combo_iter, n_samples)
@@ -316,13 +335,13 @@ def als_grid_search(
             factors=factors,
             regularization=reg,
             iterations=iters,
-            num_threads=1,
+            num_threads=num_threads,
         )
         print("\nTrain model...")
         model.fit(train_weighted_csr)
 
         # Evaluate model results
-        metrics = evaluate_als(model, train_weighted_csr, test_csr, evaluation_set, K=K, num_threads=1, show_progress=True)
+        metrics = evaluate_als(model, train_weighted_csr, test_csr, K=K, num_threads=num_threads, show_progress=True)
         print(f"prec_@_k= {metrics.prec_at_k}")
         print(f"map_@_k= {metrics.map_at_k}")
         
@@ -349,7 +368,6 @@ def als_grid_search(
 def grid_search_advanced(
     train_csr: csr_matrix,
     test_csr: csr_matrix,
-    evaluation_set: np.ndarray,
     bm25_K1_list: Sequence[int] = (100, 200),
     bm25_B_list: Sequence[float]  = (0.8, 1.0),
     factors_list: Sequence[int] = (128, 256),
@@ -378,7 +396,6 @@ def grid_search_advanced(
     _, stage_1_metr, stage_1_param, stage_1_best_idx, actual_params = als_grid_search(
         train_csr=train_csr, 
         test_csr=test_csr,
-        evaluation_set=evaluation_set,
         bm25_K1_list=bm25_K1_list,
         bm25_B_list=bm25_B_list,
         factors_list=[baseline["factors"]],
@@ -394,7 +411,6 @@ def grid_search_advanced(
     _, stage_2_metr, stage_2_param, stage_2_best_idx, actual_params = als_grid_search(
         train_csr=train_csr, 
         test_csr=test_csr,
-        evaluation_set=evaluation_set,
         bm25_K1_list=[stage_1_param[stage_1_best_idx]["bm25_K1"]],
         bm25_B_list=[stage_1_param[stage_1_best_idx]["bm25_B"]],
         factors_list=factors_list,
@@ -416,7 +432,6 @@ def grid_search_advanced(
     stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx, actual_params = als_grid_search(
         train_csr=train_csr, 
         test_csr=test_csr,
-        evaluation_set=evaluation_set,
         bm25_K1_list=[stage_2_param[stage_2_best_idx]["bm25_K1"]],
         bm25_B_list=[stage_2_param[stage_2_best_idx]["bm25_B"]],
         factors_list=stage_3_factors,

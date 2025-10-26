@@ -86,71 +86,9 @@ client = MlflowClient()
 # Helper functions and classes 
 # _________________________________________________________________________________________________________
 
-# def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
-#     ''' 
-#     Loads the ratings and movies CSV files into Pandas DataFrames.
-
-#     This function is called at the beginning of the /train endpoint to load
-#     the MovieLens ratings and movie metadata. It verifies that the files exist
-#     and handles limited row loading based on the value of train_param.n_rows.
-
-#     Parameters
-#     ----------
-#     train_param : TrainRequest
-#         Training request parameters containing 'n_rows', which limits the
-#         number of rows read from the ratings CSV (0 = load full dataset).
-
-#     Returns
-#     -------
-#     Tuple[pd.DataFrame, pd.DataFrame]
-#         A tuple (df_ratings, df_movies) where:
-#         - df_ratings : Ratings dataset (columns: userId, movieId, rating, timestamp)
-#         - df_movies  : Movie metadata (columns: movieId, title, genres)
-
-#     Raises
-#     ------
-#     HTTPException
-#         If a CSV file cannot be found (404) or if reading fails (400).
-    
-#     TODO: Replace this by a data base functionality.
-#     '''
-#     # Define file paths
-#     data_path_ratings = "data/ml-20m/ratings.csv"
-#     data_path_movies = "data/ml-20m/movies.csv"
-
-#     # Load data
-#     n_rows = train_param.n_rows
-#     # Check for existing paths
-#     if not os.path.exists(data_path_ratings):
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail=f"Ratings csv file not found. Path is:\n{data_path_ratings}"
-#         )
-
-#     if not os.path.exists(data_path_movies):
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail=f"Movies csv file not found. Path is:\n{data_path_movies}"
-#         )
-    
-#     # Try to load data
-#     try:
-#         df_ratings = pd.read_csv(data_path_ratings, nrows= n_rows if n_rows > 0 else None)
-#         df_movies = pd.read_csv(data_path_movies)
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail=f"Failed to read CSVs: {e}"
-#             )
-    
-#     return df_ratings, df_movies
-
-
-
-def _load_data_sql(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
     ''' 
-    Loads the ratings and movies data from the PostgreSQL database into Pandas DataFrames,
-    instead of the CSV files.
+    Loads the ratings and movies CSV files into Pandas DataFrames.
 
     This function is called at the beginning of the /train endpoint to load
     the MovieLens ratings and movie metadata. It verifies that the files exist
@@ -172,44 +110,106 @@ def _load_data_sql(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFram
     Raises
     ------
     HTTPException
-        If connection to the database fails or (500) or the queries fail (400).
-    '''
+        If a CSV file cannot be found (404) or if reading fails (400).
     
-    # Load environment variables and DB connection URL
-    load_dotenv()
-    DB_URL = os.getenv('DB_URL')
-    if not DB_URL:
+    TODO: Replace this by a data base functionality.
+    '''
+    # Define file paths
+    data_path_ratings = "data/ml-20m/ratings.csv"
+    data_path_movies = "data/ml-20m/movies.csv"
+
+    # Load data
+    n_rows = train_param.n_rows
+    # Check for existing paths
+    if not os.path.exists(data_path_ratings):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection URL not found in environment variables."
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Ratings csv file not found. Path is:\n{data_path_ratings}"
         )
 
-    engine = create_engine(DB_URL)
-
-    n_rows = train_param.n_rows
-
+    if not os.path.exists(data_path_movies):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Movies csv file not found. Path is:\n{data_path_movies}"
+        )
+    
+    # Try to load data
     try:
-        # Query ratings table with optional row limit
-        query_ratings = 'SELECT "userId", "movieId", rating, timestamp FROM ratings'
-        if n_rows > 0:
-            query_ratings += f" ORDER BY RANDOM() LIMIT {n_rows}"
-        else:
-            query_ratings += "ORDER BY RANDOM()"
-        
-        # Execute random query
-        df_ratings = pd.read_sql_query(query_ratings, con=engine)
-
-        # Query movies table
-        query_movies = 'SELECT "movieId", title, genres FROM movies'
-        df_movies = pd.read_sql_query(query_movies, con=engine)
-
+        df_ratings = pd.read_csv(data_path_ratings, nrows= n_rows if n_rows > 0 else None)
+        df_movies = pd.read_csv(data_path_movies)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to load data from database: {e}"
-        )
+            detail=f"Failed to read CSVs: {e}"
+            )
     
     return df_ratings, df_movies
+
+
+
+# def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
+#     ''' 
+#     Loads the ratings and movies data from the PostgreSQL database into Pandas DataFrames,
+#     instead of the CSV files.
+
+#     This function is called at the beginning of the /train endpoint to load
+#     the MovieLens ratings and movie metadata. It verifies that the files exist
+#     and handles limited row loading based on the value of train_param.n_rows.
+
+#     Parameters
+#     ----------
+#     train_param : TrainRequest
+#         Training request parameters containing 'n_rows', which limits the
+#         number of rows read from the ratings CSV (0 = load full dataset).
+
+#     Returns
+#     -------
+#     Tuple[pd.DataFrame, pd.DataFrame]
+#         A tuple (df_ratings, df_movies) where:
+#         - df_ratings : Ratings dataset (columns: userId, movieId, rating, timestamp)
+#         - df_movies  : Movie metadata (columns: movieId, title, genres)
+
+#     Raises
+#     ------
+#     HTTPException
+#         If connection to the database fails or (500) or the queries fail (400).
+#     '''
+    
+#     # Load environment variables and DB connection URL
+#     load_dotenv()
+#     DB_URL = os.getenv('DB_URL')
+#     if not DB_URL:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Database connection URL not found in environment variables."
+#         )
+
+#     engine = create_engine(DB_URL)
+
+#     n_rows = train_param.n_rows
+
+#     try:
+#         # Query ratings table with optional row limit
+#         query_ratings = 'SELECT "userId", "movieId", rating, timestamp FROM ratings'
+#         if n_rows > 0:
+#             query_ratings += f" ORDER BY RANDOM() LIMIT {n_rows}"
+#         else:
+#             query_ratings += "ORDER BY RANDOM()"
+        
+#         # Execute random query
+#         df_ratings = pd.read_sql_query(query_ratings, con=engine)
+
+#         # Query movies table
+#         query_movies = 'SELECT "movieId", title, genres FROM movies'
+#         df_movies = pd.read_sql_query(query_movies, con=engine)
+
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=f"Failed to load data from database: {e}"
+#         )
+    
+#     return df_ratings, df_movies
 
 
 def csr_fingerprint(X) -> str:
@@ -263,7 +263,7 @@ def prepare_training(
 
     # Set up model training
     # Prepare data
-    train_csr, test_csr, mappings, evaluation_set = prepare_data(
+    train_csr, test_csr, test_csr_masked, mappings, evaluation_set = prepare_data(
         df=df_ratings,
         pos_threshold= train_param.pos_threshold,
     )
@@ -282,7 +282,7 @@ def prepare_training(
         threshold=train_param.pos_threshold)
     print(f"\nShape of popular_item_ids is {len(popular_item_ids)}")
 
-    return df_ratings, train_csr, test_csr, mappings, evaluation_set, movie_id_dict, popular_item_ids
+    return df_ratings, train_csr, test_csr, test_csr_masked, mappings, evaluation_set, movie_id_dict, popular_item_ids
 
 
 def mlflow_log_run(
@@ -485,7 +485,6 @@ def did_model_improve(
             champ_model, champ_metrics_list, champ_params_list, champ_idx, actual_params = als_grid_search(
                 train_csr=train_csr,
                 test_csr=test_csr,
-                evaluation_set=evaluation_set,
                 bm25_K1_list=[champ_params["bm25_K1"]],
                 bm25_B_list=[champ_params["bm25_B"]],
                 factors_list=[champ_params["factors"]],
@@ -940,13 +939,14 @@ async def unhandled_exception_handler(_: Request, exc: Exception):
 @app.post("/train", response_model=TrainResponse)
 def train_endpoint(train_param: TrainRequest):
     # Load data
-    df_ratings, df_movies = _load_data_sql(train_param=train_param)
+    df_ratings, df_movies = _load_data(train_param=train_param)
 
     # Prepare training 
     (
     df_ratings,
     train_csr,
     test_csr,
+    test_csr_masked,
     mappings,
     evaluation_set,
     movie_id_dict,
@@ -961,8 +961,7 @@ def train_endpoint(train_param: TrainRequest):
     # Grid search
     model, metrics_ls, parameter_ls, best_idx, used_params = grid_search_advanced(
         train_csr=train_csr,
-        test_csr=test_csr,
-        evaluation_set=evaluation_set,
+        test_csr=test_csr_masked,
         bm25_K1_list=train_param.als_parameter.bm25_K1_list,
         bm25_B_list=train_param.als_parameter.bm25_B_list,
         factors_list=train_param.als_parameter.factors_list,
@@ -984,7 +983,7 @@ def train_endpoint(train_param: TrainRequest):
     # Check if model has improved compared to current champ model
     improved, champ_model, champ_metrics, champ_params = did_model_improve(
         train_csr=train_csr,
-        test_csr=test_csr,
+        test_csr=test_csr_masked,
         evaluation_set=evaluation_set,
         best_metrics=best_metrics
     )
