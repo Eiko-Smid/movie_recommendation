@@ -35,14 +35,38 @@ DB_URL = os.getenv('DB_URL')
 if DB_URL is None:
     raise ValueError("DB_URL environment variable is not set. Check your .env file and load_dotenv call.")
 
-engine = create_engine(DB_URL)    
+engine = create_engine(DB_URL) 
 
-# Query the Database and read tables into pandas
-query_movies = 'SELECT "movieId", title, genres FROM movies'
-movies_df = pd.read_sql_query(query_movies, con=engine)  # or pd.read_sql(query_movies, con=engine)
+# Create helpers to query the Database and read tables into pandas
+@st.cache_data(persist=True)  # caches indefinitely by default but needs persist=True to save to disk on Docker
+def load_movies():
+    query = 'SELECT "movieId", title, genres FROM movies'
+    return pd.read_sql_query(query, con=engine)
 
-query_ratings = 'SELECT "userId", "movieId", rating, timestamp FROM ratings'
-ratings_df = pd.read_sql_query(query_ratings, con=engine)
+@st.cache_data(persist=True)
+def load_ratings():
+    query = 'SELECT "userId", "movieId", rating, timestamp FROM ratings'
+    return pd.read_sql_query(query, con=engine)
+
+
+# Create helpers for Quick Stats and ratings distribution histogram
+@st.cache_data(persist=True)
+def compute_quick_stats(ratings_df, movies_df):
+    avg_rating = ratings_df['rating'].mean()
+    avg_ratings_per_user = ratings_df.groupby('userId')['rating'].count().mean()
+    avg_ratings_per_movie = ratings_df.groupby('movieId')['rating'].count().mean()
+    total_possible = len(ratings_df['userId'].unique()) * len(ratings_df['movieId'].unique())
+    sparsity = 1 - (len(ratings_df) / total_possible)
+    return avg_rating, avg_ratings_per_user, avg_ratings_per_movie, sparsity
+
+@st.cache_data(persist=True)
+def sample_ratings(ratings_df, n=30000):
+    return ratings_df.sample(n)
+
+
+
+movies_df = load_movies() # cached
+ratings_df = load_ratings() 
 
 col1, col2 = st.columns(2)
 
@@ -70,11 +94,7 @@ with col3:
 with col4:
     # Additional metrics
     st.subheader("            ")
-    avg_rating = ratings_df['rating'].mean()
-    avg_ratings_per_user = ratings_df.groupby('userId')['rating'].count().mean()
-    avg_ratings_per_movie = ratings_df.groupby('movieId')['rating'].count().mean()
-    total_possible = len(ratings_df['userId'].unique()) * len(ratings_df['movieId'].unique())
-    sparsity = 1 - (len(ratings_df) / total_possible)
+    avg_rating, avg_ratings_per_user, avg_ratings_per_movie, sparsity = compute_quick_stats(ratings_df, movies_df) # cached
 
     st.metric("⭐ Average rating", f"{avg_rating:.2f}")
     st.metric("👥 Average ratings per user", f"{avg_ratings_per_user:.1f}")
@@ -86,7 +106,7 @@ with col4:
 with col5:
     st.subheader("Ratings Distribution")
     fig, ax = plt.subplots()
-    ratings_sample = ratings_df.sample(n=30000)
+    ratings_sample = sample_ratings(ratings_df) # cached
     ratings_sample['rating'].hist(ax=ax, bins=10, color='cyan', edgecolor='black')
     ax.set_xlabel('Score')
     ax.set_ylabel('Frequency')
