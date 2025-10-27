@@ -10,7 +10,7 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 from pathlib import Path
 import tempfile
 
-# from sqlalchemy import create_engine, text
+from sqlalchemy import text
 # from sqlalchemy.engine import Engine
 
 from dotenv import load_dotenv 
@@ -962,7 +962,7 @@ def health_check():
     if not DB_URL:
         status_report["database"] = "missing DB_URL env var"
     try:
-        engine = create_engine(DB_URL)
+        engine = _get_engine()
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         status_report["database"] = "reachable"
