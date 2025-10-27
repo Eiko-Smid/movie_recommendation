@@ -10,7 +10,9 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 from pathlib import Path
 import tempfile
 
-from sqlalchemy import create_engine 
+# from sqlalchemy import create_engine, text
+# from sqlalchemy.engine import Engine
+
 from dotenv import load_dotenv 
 
 from fastapi import FastAPI, HTTPException, status, Query, Request, APIRouter
@@ -24,12 +26,14 @@ from typing import Dict, List, Optional, Sequence, Tuple, Mapping, Iterable, Any
 
 from datetime import datetime
 
+from math import ceil
 import numpy as np
 import pandas as pd
 
 import json
 import hashlib
 import platform
+import zlib
 
 import mlflow
 from mlflow import MlflowClient
@@ -59,6 +63,14 @@ from src.models.als_movie_rec import (
     grid_search_advanced
 )
 
+# Import sql request code
+from src.data.db_requests import (
+    _get_engine,
+    _create_mv_if_missing,
+    _load_full_histories_for_n_users,
+    refresh_mv
+)
+
 
 # _________________________________________________________________________________________________________
 # Global settings
@@ -80,6 +92,7 @@ mlflow.set_experiment(EXPERIMENT)
 CHAMP_MODEL: Optional[mlflow.pyfunc.PyFuncModel] = None
 
 client = MlflowClient()
+
 
 
 # _________________________________________________________________________________________________________
@@ -139,21 +152,19 @@ client = MlflowClient()
 #     return df_ratings, df_movies
 
 
-
 def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    ''' 
-    Loads the ratings and movies data from the PostgreSQL database into Pandas DataFrames,
-    instead of the CSV files.
-
-    This function is called at the beginning of the /train endpoint to load
-    the MovieLens ratings and movie metadata. It verifies that the files exist
-    and handles limited row loading based on the value of train_param.n_rows.
+    """
+    Creates a materialized view of all users which rated 'MIN_N_USER_RATINGS'or more movies,
+    if not already existing. 
+    Then requests the DB to get n_rows users which fulfil the condition. This ensures that we
+    only get meaningful users. 
+    Also requests the movies table (id, name, genres) from the db. 
+    Stores both requests in two separated df's and returns them.
 
     Parameters
     ----------
-    train_param: TrainRequest
-        Training request parameters containing 'n_rows', whicyh limits the
-        number of rows read from the ratings CSV (0 = load full dataset).
+    train_param:
+        Training configuration containing 'pos_threshold' and 'n_popular_movies'.
 
     Returns
     -------
@@ -161,47 +172,39 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
         Data frame were each rows contains a pair of (userId, movieId, rating, timestamp)
     df_movies: pd.DataFrame
         Data frame were each rows contains a pair of (movieId, title, genres)
-    '''
-    
-    # Load environment variables and DB connection URL
-    load_dotenv()
-    DB_URL = os.getenv('DB_URL')
-    if not DB_URL:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection URL not found in environment variables."
-        )
 
-    engine = create_engine(DB_URL)
+    """
+    engine = _get_engine()
+    n_rows = int(getattr(train_param, "n_rows", 0) or 0)
 
-    n_rows = train_param.n_rows
+    # Set default value to avoid breaking the pipeline.
+    if n_rows <=0:
+        n_rows = 500
 
     try:
-        # Query ratings table with optional row limit
-        query_ratings = 'SELECT "userId", "movieId", rating, timestamp FROM ratings'
-        if n_rows > 0:
-            query_ratings += f" ORDER BY RANDOM() LIMIT {n_rows}"
-        else:
-            query_ratings += "ORDER BY RANDOM()"
+        # Creates a materialized view -> table of all users ids > 5 movie ratings
+        _create_mv_if_missing(engine)
         
-        # Execute random query
-        df_ratings = pd.read_sql_query(query_ratings, con=engine)
+        # Loads n_users_target users with have more than 5 movies rated
+        df_ratings = _load_full_histories_for_n_users(engine, n_users_target=n_rows)
 
-        # Query movies table
-        query_movies = 'SELECT "movieId", title, genres FROM movies'
-        df_movies = pd.read_sql_query(query_movies, con=engine)
-
+        # Get movies information
+        with engine.connect() as conn:
+            df_movies = pd.read_sql_query(
+                'SELECT "movieId", title, genres FROM movies', conn
+            )
+    
+    # Raise exception if db request fails
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to load data from database: {e}"
         )
-    
+
     return df_ratings, df_movies
 
 
 def csr_fingerprint(X) -> str:
-    import zlib
     h = 0
     for arr in (X.indptr, X.indices, X.data):
         h = zlib.crc32(arr.view(np.uint8), h)
@@ -947,6 +950,24 @@ async def unhandled_exception_handler(_: Request, exc: Exception):
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "Internal server error while training the model."},
     )
+
+@app.post(
+        "/refresh-mv",
+        summary="Refreshes the Materialized View (all users > 5 ratings)",
+        description=(
+        "When called the materialized view inside the data base gets refreshed."
+        "This is needed such that the api train endpoint has access to the newest"
+        "data which lives inside the materialized view."
+        "The endpoint should get called to frequently, once a day before training"
+        "is enough."
+    ),
+    response_description="Status (ok if it worked). and the way the mv was refreshed." \
+    "Either concurrently (new mv gets created while old one still useable -> parallel) "
+    "or not concurrently (new mv gets created while old one still not useable)."
+)
+def refresh_mv_endpoint():
+    refreshed_concurrently = refresh_mv()
+    return {"status": "ok", "concurrent": refreshed_concurrently}
 
 
 @app.post(

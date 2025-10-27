@@ -13,6 +13,8 @@ from implicit.als import AlternatingLeastSquares
 from implicit.nearest_neighbours import bm25_weight
 from implicit.evaluation import train_test_split, precision_at_k, mean_average_precision_at_k
 
+import zlib
+
 from itertools import product
 
 import random
@@ -48,7 +50,6 @@ class ALS_Metrics(BaseModel):
 
 def csr_fingerprint(X) -> str:
     '''Create hash of matrices adn other stuff to check if they are consistent through runs.'''
-    import zlib
     h = 0
     for arr in (X.indptr, X.indices, X.data):
         h = zlib.crc32(arr.view(np.uint8), h)
