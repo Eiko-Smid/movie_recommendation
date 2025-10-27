@@ -110,8 +110,7 @@ client = MlflowClient()
 #     Parameters
 #     ----------
 #     train_param: TrainRequest
-#         Training request parameters containing 'n_rows', which limits the
-#         number of rows read from the ratings CSV (0 = load full dataset).
+    # Training configuration containing 'n_users'.
 
 #     Returns
 #     -------
@@ -164,7 +163,10 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
     Parameters
     ----------
     train_param:
-        Training configuration containing 'pos_threshold' and 'n_popular_movies'.
+        Training configuration containing 'n_users'.
+            n_users > 0: Load all ratings from the n_users randomly
+            n_users = 0: Load ratings from 500 (default) users 
+            n_users < 0: Load all ratings, no mv filtered.
 
     Returns
     -------
@@ -175,33 +177,40 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
     """
     engine = _get_engine()
-    n_rows = int(getattr(train_param, "n_rows", 0) or 0)
-
-    # Set default value to avoid breaking the pipeline.
-    if n_rows <=0:
-        n_rows = 500
+    n_users = int(train_param.n_users)
 
     try:
         # Creates a materialized view -> table of all users ids > 5 movie ratings
         _create_mv_if_missing(engine)
-        
-        # Loads n_users_target users with have more than 5 movies rated
-        df_ratings = _load_full_histories_for_n_users(engine, n_users_target=n_rows)
 
-        # Get movies information
+        # Use default value for zero case
+        if n_users == 0:
+            n_users = 500
+
         with engine.connect() as conn:
+            if n_users < 0:
+                # Load full dataset without filtering                
+                df_ratings = pd.read_sql_query(
+                        'SELECT "userId", "movieId", rating, "timestamp" FROM ratings',
+                        conn,
+                    )
+            else:
+                # Load n_users 
+                df_ratings = _load_full_histories_for_n_users(engine, n_users_target=n_users)
+            
+            # Load movies            
             df_movies = pd.read_sql_query(
                 'SELECT "movieId", title, genres FROM movies', conn
             )
-    
-    # Raise exception if db request fails
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to load data from database: {e}"
         )
-
+    
     return df_ratings, df_movies
+
 
 
 def csr_fingerprint(X) -> str:
@@ -344,7 +353,7 @@ def mlflow_log_run(
         The BM25-weighted train matrix.
     '''
     # Define run name beased on date-time
-    run_name = f"train | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | n_rows={train_param.n_rows}"
+    run_name = f"train | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | n_rows={train_param.n_users}"
     # Start MLFlow run to log metrics and model
     with mlflow.start_run(run_name=run_name):
         # Log the whole grid as a single JSON param (correct API: log_param) -> better overview
@@ -836,7 +845,7 @@ class ALS_Parameter_Grid(BaseModel):
 
 class TrainRequest(BaseModel):
     """Input schema for the `/train` endpoint."""
-    n_rows: int = Field(10000, description="Number of rows to read (0 = full dataset)")
+    n_users: int = Field(1000, description="Number of users to read (0 = full dataset)")
     pos_threshold: float = Field(4.0, description="Threshold for positive rating")
 
     als_parameter: ALS_Parameter_Grid = Field(
