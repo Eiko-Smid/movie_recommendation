@@ -67,3 +67,43 @@ services:
       - ./champ_store:/app/champ_store
       # Environment var for db.
       - ./.env:/app/.env
+
+  # Add streamlit
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: streamlit_app
+    depends_on:
+      - api      
+    ports:
+      - "8501:8501"
+    environment:
+      DB_URL: ${DB_URL}
+      API_URL: "http://api:8000" 
+    networks:
+      - default 
+    volumes:
+      - ./streamlit:/app     # mount local streamlit folder inside container at /app
+      - ./streamlit_cache:/root/.streamlit/cache # mount local cache folder inside container at /root/.streamlit/cache
+
+
+
+  # 🕐 Scheduled Trainer (daily retraining)
+  # Training can be manually started with: docker exec -it daily_trainer sh -c "curl -X POST http://api:8000/train -H 'Content-Type: application/json' -d @/data/train_payload.json
+  trainer:
+    image: curlimages/curl:8.5.0
+    container_name: daily_trainer
+    user: root  # ✅ allow writing to /etc/crontabs/root
+    depends_on:
+      api:
+        condition: service_started
+    command: >
+      sh -c "
+        echo \"* 2 * * * echo \\\"\$(date '+%Y-%m-%d %H:%M:%S') - Starting training...\\\" >> /var/log/cron.log && curl -X POST http://api:8000/train -H 'Content-Type: application/json' -d @/data/train_payload.json >> /var/log/cron.log 2>&1\" > /etc/crontabs/root &&
+        echo '✅ Cron job scheduled: daily at 2:00 UTC -> POST http://api:8000/train using /data/train_payload.json' &&
+        crond -f -l 2
+      "
+    volumes:
+      - ./logs:/var/log  # persist cron logs locally
+      - ./train_payload.json:/data/train_payload.json:ro  # ✅ mount payload file read-only
