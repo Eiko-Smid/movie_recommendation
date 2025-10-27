@@ -6,6 +6,7 @@ services:
       args:
         MLFLOW_VERSION: "3.4.0"
     container_name: mlflow_server
+    restart: "no"
     ports:
       - "5000:5000"
     # Single canonical volume where BOTH the DB and artifacts live on your host
@@ -17,7 +18,7 @@ services:
   postgres:
     image: postgres:15
     container_name: postgres_db
-    restart: always
+    restart: "no"
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -50,6 +51,7 @@ services:
     ports:
       - "8000:8000"   # FastAPI
       - "5678:5678"   # debugpy
+    restart: "no"
     environment:
       # If you run MLflow on Windows host at :5000, use host.docker.internal
       MLFLOW_TRACKING_URI: "http://mlflow:5000"
@@ -98,8 +100,11 @@ services:
         condition: service_started
     command: >
       sh -c "
-        echo \"* 2 * * * echo \\\"\$(date '+%Y-%m-%d %H:%M:%S') - Starting training...\\\" >> /var/log/cron.log && curl -X POST http://api:8000/train -H 'Content-Type: application/json' -d @/data/train_payload.json >> /var/log/cron.log 2>&1\" > /etc/crontabs/root &&
-        echo '✅ Cron job scheduled: daily at 2:00 UTC -> POST http://api:8000/train using /data/train_payload.json' &&
+        echo \"55 1 * * * echo \\\"\$(date '+%Y-%m-%d %H:%M:%S') - Refreshing mv...\\\" >> /var/log/cron.log && curl -X POST http://api:8000/refresh-mv -H 'accept: application/json' -d '' >> /var/log/cron.log 2>&1\" > /etc/crontabs/root &&
+        echo \"* 2 * * * echo \\\"\$(date '+%Y-%m-%d %H:%M:%S') - Starting training...\\\" >> /var/log/cron.log && curl -X POST http://api:8000/train -H 'Content-Type: application/json' -d @/data/train_payload.json >> /var/log/cron.log 2>&1\" >> /etc/crontabs/root &&
+        echo '✅ Cron job scheduled:' &&
+        echo '   • 01:55 UTC -> refresh-mv' &&
+        echo '   • 02:00 UTC -> train' &&
         crond -f -l 2
       "
     volumes:
