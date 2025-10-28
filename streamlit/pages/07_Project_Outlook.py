@@ -63,7 +63,7 @@ improvements = [
 # Display improvements as visually structured cards
 for item in improvements:
     st.markdown(f"""
-    <div style='background-color:#f8f9fa; padding: 1.4rem; border-radius: 12px;
+    <div style='background-color:#f8f9fa; color:#111; padding: 1.4rem; border-radius: 12px;
                 margin-bottom: 1.2rem; border-left: 6px solid #00BFFF;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.06);'>
         <h4 style='margin-bottom: 0.4rem;'>{item["title"]}</h4>
