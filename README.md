@@ -5,53 +5,157 @@ This project is a starting Pack for MLOps projects based on the subject "movie_r
 
 Project Organization
 ------------
-
-    ├── LICENSE
-    ├── README.md          <- The top-level README for developers using this project.
-    ├── data
-    │   ├── external       <- Data from third party sources.
-    │   ├── interim        <- Intermediate data that has been transformed.
-    │   ├── processed      <- The final, canonical data sets for modeling.
-    │   └── raw            <- The original, immutable data dump.
+    sep25_bmlops_int_movie_reco/
     │
-    ├── logs               <- Logs from training and predicting
+    ├── .github/workflows
+    │   └── python-app.yml
     │
-    ├── models             <- Trained and serialized models, model predictions, or model summaries
+    ├── .venv/...
     │
-    ├── notebooks          <- Jupyter notebooks. Naming convention is a number (for ordering),
-    │                         the creator's initials, and a short `-` delimited description, e.g.
-    │                         `1.0-jqp-initial-data-exploration`.
+    ├── .vscode/
+    │   └── launch.json
     │
-    ├── references         <- Data dictionaries, manuals, and all other explanatory materials.
+    ├── champ_store/
+    │   └── champion_train_csr.npz
+    │   
+    ├── data/
+    │   ├── dump/
+    │   │   └── dump.sql
+    │   └── ml-20m/
+    │       ├── genome-scores.csv
+    │       ├── genome-tags.csv
+    │       ├── links.csv
+    │       ├── movies.csv
+    │       ├── ratings.csv
+    │       ├── README.txt
+    │       └── tags.csv 
     │
-    ├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-    │   └── figures        <- Generated graphics and figures to be used in reporting
+    ├── logs/
     │
-    ├── requirements.txt   <- The requirements file for reproducing the analysis environment, e.g.
-    │                         generated with `pip freeze > requirements.txt`
+    ├── models/
+    │   └── .gitkeep
     │
-    ├── src                <- Source code for use in this project.
-    │   ├── __init__.py    <- Makes src a Python module
+    ├── notebooks/
+    │   └── .gitkeep
+    │
+    ├── postgres_data/
+    │   ├── base/...
+    │   ├── ...
+    │   ├── ...
+    │   └── postmaster.opts
+    │
+    ├── references/ 
+    │   └── .gitkeep
+    │        
+    ├── reports/
+    │   ├── figures/
+    │       └── .gitkeep
+    │   └── .gitkeep
+    │
+    ├── src/ 
+    │   ├── __pycache__/
+    │   │   └── __init__.cpython-311.pyc 
+    │   │  
     │   │
-    │   ├── data           <- Scripts to download or generate data
-    │   │   └── make_dataset.py
+    │   ├── api/       
+    │   │   ├── __pycache__/
+    │   │   │   ├── config.cpython-311.pyc 
+    │   │   │   ├── movie_rec_api_and_mlflow_SQL.cpython-311.pyc 
+    │   │   │   └── movie_rec_api_and_mlflow.cpython-311.pyc  
+    │   │   │
+    │   │   └── movie_rec_api_and_mlflow_SQL.py
+    │   │   
+    │   ├── data/
+    │   │   ├── __pycache__/
+    │   │   ├── mlartifacts\1/
+    │   │   │   └── ...
+    │   │   │   └── models/...
+    │   │   │
+    │   │   ├── mlruns/
+    │   │   ├── __init__.py
+    │   │   ├── db_requests.py
+    │   │   ├── mlflow.db
+    │   │   ├── postrgre_db_creation.py
+    │   │   └── test_db_connection.py
     │   │
-    │   ├── features       <- Scripts to turn raw data into features for modeling
+    │   ├── features/
+    │   │   ├── __init__.py
     │   │   └── build_features.py
     │   │
-    │   ├── models         <- Scripts to train models and then use trained models to make
-    │   │   │                 predictions
-    │   │   ├── predict_model.py
-    │   │   └── train_model.py
+    │   ├── models/         
+    │   │   ├── __pycache__/
+    │   │   │   ├── __init__.cpython-311.pyc 
+    │   │   │   └── als_movie_rec.cpython-311.pyc 
+    │   │   │
+    │   │   ├── __init__.py
+    │   │   └── als_movie_rec.py
     │   │
-    │   ├── visualization  <- Scripts to create exploratory and results oriented visualizations
+    │   ├── visualization/
+    │   │   ├── __init__.py
     │   │   └── visualize.py
-    │   └── config         <- Describe the parameters used in train_model.py and predict_model.py
+    │   │
+    │   ├── __init__.py
+    │   │
+    │   └── config     
+    │
+    │ 
+    ├── streamlit/ 
+    │   ├── pages/      
+    │   │   ├── 01_A_Bit_Of_History.py
+    │   │   ├── 02_ALS_Model.py
+    │   │   ├── 03_ALS_Model2.py
+    │   │   ├── 04_Dataset_Description.py
+    │   │   ├── 05_Pipeline_Overview.py
+    │   │   ├── 06_API_Endpoints.py 
+    │   │   ├── 07_Project_Outlook.py
+    │   │   └── 08_Thank_You.py 
+    │   │
+    │   ├── utils/
+    │   │   ├── pipeline_refresh.svg
+    │   │   └── pipeline.svg
+    │   │  
+    │   └── streamlit_app.py
+    │
+    ├── streamlit_cache/...
+    │  
+    ├── .env
+    │  
+    ├── .gitignore
+    │
+    ├── 1_Training_before_test_set_filtering.txt   
+    │  
+    ├── 2_Training_after_test_set_filtering.txt 
+    │  
+    ├── 3_Training.txt
+    │  
+    ├── docker-compose.yml
+    │  
+    ├── Dockerfile.api    
+    │
+    ├── Dockerfile.mlflow
+    │  
+    ├── Dockerfile.streamlit
+    │  
+    ├── LICENSE
+    │       
+    ├── pipeline.drawio.svg
+    │
+    ├── README.md
+    │  
+    ├── requirements.in   
+    │  
+    ├── requirements.txt 
+    │  
+    ├── terminal_out.txt
+    │  
+    └── train_payload.json
+
 
 --------
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
 
+<img src="streamlit/utils/pipeline_refresh.svg" width="400" alt="Pipeline Flowchart"/>
 
 
 # Project setup
