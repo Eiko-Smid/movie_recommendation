@@ -73,7 +73,15 @@ target/
 .ipynb_checkpoints/
 
 # exclude data from source control by default
-/data/
+# Ignore everything inside /data
+/data/*
+
+# But keep the data folder itself
+!data/
+
+# And keep the preprocessing_steps folder and its content
+!data/preprocessing_steps/
+!data/preprocessing_steps/**
 
 # Mac OS-specific storage files
 .DS_Store
