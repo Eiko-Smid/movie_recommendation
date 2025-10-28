@@ -458,6 +458,8 @@ def prepare_data_streamlit(
     # print(f"\nTHe evaluation set includes {ratio:.2f} % of the original train/test data.")
 
     test_filtered_df = pd.DataFrame.sparse.from_spmatrix(test_csr_masked)
+    train_csr_df = pd.DataFrame.sparse.from_spmatrix(train_csr)
+    test_csr_df = pd.DataFrame.sparse.from_spmatrix(test_csr)
 
     # Store df ins csv files
     df.to_csv("data/preprocessing_steps/original.csv", index=False)
@@ -465,6 +467,8 @@ def prepare_data_streamlit(
     df_pos.to_csv("data/preprocessing_steps/df_pos.csv", index=False)
     train_df.to_csv("data/preprocessing_steps/train_df.csv", index=False)
     test_df.to_csv("data/preprocessing_steps/test_df.csv", index=False)
+    train_csr_df.to_csv("data/preprocessing_steps/train_csr.csv", index=False)
+    test_csr_df.to_csv("data/preprocessing_steps/test_csr.csv", index=False)
     test_filtered_df.to_csv("data/preprocessing_steps/test_filtered.csv", index=False)
 
 
