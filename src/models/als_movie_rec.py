@@ -118,6 +118,7 @@ def apply_mask_to_csr(
     return test_csr_masked
 
 
+
 def prepare_data(
         df: pd.DataFrame,
         pos_threshold: float = 4.0,
@@ -262,6 +263,209 @@ def prepare_data(
     # print(f"\nTHe evaluation set includes {ratio:.2f} % of the original train/test data.")
 
     return train_csr, test_csr, test_csr_masked, mappings, evaluation_set_mask
+
+
+def create_test_data():
+    n_users = 6
+    # users_ids = np.arange(n_users)
+    # movie_ids = np.arange(n_users)
+
+    ratings = np.array([
+    # User 1: 6/10 Ratings (60%)
+    [4.0, 3.0, 0.0, 5.0, 0.0, 2.0, 4.0, 0.0, 3.0, 0.0],    
+    
+    # User 2: 7/10 Ratings (70%)  
+    [0.0, 2.0, 4.0, 0.0, 3.0, 5.0, 0.0, 4.0, 0.0, 3.0],
+
+    # User 3: 6/10 Ratings (60%)
+    [3.0, 0.0, 0.0, 4.0, 0.0, 0.0, 2.0, 5.0, 4.0, 0.0],
+    
+    # User 4: 7/10 Ratings (70%)
+    [0.0, 0.0, 5.0, 0.0, 4.0, 3.0, 1.0, 0.0, 2.0, 4.0],
+    
+    # User 5: 6/10 Ratings (60%)
+    [5.0, 4.0, 0.0, 3.0, 0.0, 0.0, 4.0, 2.0, 0.0, 5.0],
+    
+    # User 6: 7/10 Ratings (70%)
+    [2.0, 0.0, 3.0, 0.0, 5.0, 4.0, 0.0, 3.0, 1.0, 0.0]
+    ])
+    
+    user_ids = []
+    movie_ids = []
+    user_ratings = []
+    timestamps = []
+
+    for i, rating_ls in enumerate(ratings):
+        for j, rate in enumerate(rating_ls):
+            if rate > 0.0:
+                user_ratings.append(rate)
+                user_ids.append(i)
+                movie_ids.append(j)
+                timestamps.append(j)
+    
+    df = pd.DataFrame({
+        "userId": user_ids,
+        "movieId": movie_ids,
+        "rating": user_ratings,
+        "timestamp": timestamps
+    })
+
+    return df
+    
+
+
+def prepare_data_streamlit(
+        df: pd.DataFrame,
+        pos_threshold: float = 4.0,
+        ) -> Tuple[csr_matrix, csr_matrix, csr_matrix, Mappings, np.ndarray]:
+    '''
+    Prepare the data by dropping nans, keep only ratings > threshold, split into train
+    and test and build scr matrixes of them. The test csr matrix will be filtered. 
+    All train rows that have lessthan 5 train entries and 1 test entries will be set
+    to zero. The zero lines will be automaticallyignored when computing the evaluation
+    metrics. Returns the train, test csr filtered test csr matrices, the mappings and
+    the evaluation_set_mask used for filtering the test csr matrix.
+
+    Parameters
+    ----------
+    df (pd.DataFrame):
+            Input interactions with columns:
+            - `userId` (int): user identifier (will be cast to int64).
+            - `movieId` (int): item identifier (will be cast to int64).
+            - `rating` (float): explicit rating (will be cast to float32).
+            - `timestamp` (int): interaction time (will be cast to int64).
+    pos_threshold (float, optional):
+            Minimum rating to treat an interaction as positive (kept in the dataset).
+            Defaults to 4.0.
+
+    Returns
+    -------
+    train_csr: csr_matrix:
+        The train csr matrix (user-item) used for training the model.
+    test_csr: csr_matrix:
+        Binary user–item matrix for the full test split (unmasked).
+    test_csr_masked: csr_matrix
+        The filtered csr matrix used for evaluating the model. All train rows that have
+        less than 5 train entries and 1 test entries will be set to zero. The zero lines
+        will be automatically ignored when computing the evaluation metrics.
+    mappings: Mappings:
+        Stores the relevant mappings needed to transfer the df user/item ids to the user/item ids of 
+        the csr matrices.
+    evaluation_set_mask: np.ndarray:
+        Boolean mask where `True` marks users with ≥5 train items and ≥1 test item.
+    '''
+    print(f"\nOriginal df shape: {df.shape}")
+    print(f"Original df:\n{df.head(20)}")
+
+    user_counts = df['userId'].value_counts()
+    print(f"\nuser_counts of original df \n{user_counts}")
+    print(f"\nNumber of users with more than 5 ratings: {(df['userId'].value_counts() > 5).sum()}")
+
+    # Clean data and convert types
+    df_nans = df.dropna(subset=["userId", "movieId", "rating"])
+    df["userId"] = df["userId"].astype(np.int64)
+    df["movieId"] = df["movieId"].astype(np.int64)
+    df["rating"] = df["rating"].astype(np.float32)
+    df["timestamp"] = df["timestamp"].astype(np.int64)
+
+    # Display df infos
+    print(f"\nShape after drop nans: {df_nans.shape}")
+    print(f"Data after drop nans:\n{df_nans.head(10)}")
+
+    # Keep only pos ratings
+    df_pos = df_nans.loc[df["rating"] >= pos_threshold].copy()
+    if df_pos.empty:
+        raise ValueError(f"No positives after binarization; lower pos_threshold < {pos_threshold} or data checking needed.")
+    print(f"\nData after filtering by threshold {pos_threshold}: {df_pos.shape}")
+    print(f"Data after filtering by threshold {pos_threshold}:\n{df_pos.head(10)}")
+    
+    # Here we wanne find the rows per user with the latest timestamp -> newest data
+    # This newest data will be used as test dataset. If we have multiple rows per user with same timestampe, all will be used as train data
+    latest_ts = df_pos.groupby("userId")["timestamp"].transform("max")
+    df_pos["is_test"] = (df_pos["timestamp"] == latest_ts)
+    print(f"\nData shape after grouping by latest timestamp: {df_pos.shape}")
+    print(f"Data after grouping by latest timestamp:\n{df_pos.head(10)}")
+
+    # Users with at least one train and one test interaction
+    # (some users may have only one positive; they will have no train or no test)
+    # Keep tests as exactly the "latest" rows; if multiple ties on same timestamp, multiple test items possible.
+    print("\nGroupe and transform data ...")
+    grp = df_pos.groupby("userId")["is_test"]
+    has_train = grp.transform(lambda s: (~s).any()) # Search if grp df has at least one row where is_test = False -> Train row
+    has_test = grp.transform(lambda s: s.any())     # Search if grp has at least one row where is_test = True -> Test row
+    usable = has_train & has_test                   # Indicates if the user has at least one train and test row
+    df_pos = df_pos.loc[usable].copy()              # Copys all data that has at least one train and test row
+    print(f"\nData shape after transform:{df_pos.shape}")
+    print(f"Data after transform:\n{df_pos.head(10)}")
+
+    # Split data in train and test data
+    train_df = df_pos.loc[~df_pos["is_test"]]
+    test_df = df_pos.loc[df_pos["is_test"]]
+    
+    print(f"\nuser_counts after last df filter set:\n{df['userId'].value_counts()}")
+
+    user_counts = df_pos['userId'].value_counts()
+    print(f"\nuser_counts after last df filter\n{user_counts}")
+    print(f"\nNumber of users with more than 5 ratings: {(df_pos['userId'].value_counts() > 5).sum()}")
+
+    # Build mappings 
+    user_uniques = df_pos["userId"].unique()
+    item_uniques = df_pos["movieId"].unique()
+    user_id_to_index = {u: i for i, u in enumerate(user_uniques)}
+    item_id_to_index = {m: i for i, m in enumerate(item_uniques)}
+    n_users, n_items = len(user_uniques), len(item_uniques)
+
+    # Build the coo matrices for train and test
+    train_coo = build_binary_coo(train_df, user_id_to_index, item_id_to_index, n_users, n_items)
+    test_coo  = build_binary_coo(test_df, user_id_to_index, item_id_to_index, n_users, n_items)
+
+    print(f"\nShape of train matrix: {train_coo.shape}")
+    print(f"Train matrix:\n{train_coo.toarray()}")
+
+    print(f"Shape of test matrix: {test_coo.shape}")
+    print(f"Test matrix:\n{test_coo.toarray()}") 
+
+    # Store mappings
+    mappings = Mappings(
+        user_index_to_id=dict(enumerate(user_uniques)),
+        item_index_to_id=dict(enumerate(item_uniques)),
+        user_id_to_index=user_id_to_index,
+        item_id_to_index=item_id_to_index,
+    )
+
+    # Filter train rows > 5 intersections, test rows > 1 intersection
+    # Transform coo matrices to csr matrices
+    train_csr = train_coo.tocsr()
+    test_csr = test_coo.tocsr()
+
+    # Count elements in each row for train and test (We cant just iterate over because we deal with csr)
+    train_counts = np.diff(train_csr.indptr)
+    test_counts = np.diff(test_csr.indptr)
+
+    # Boolean mask of eligible users: >=5 train AND >=1 test
+    print(f"\nTest data entries before masking: {test_csr.nnz}")
+    evaluation_set_mask = (train_counts >= 4) & (test_counts >= 1)
+
+    # Filter evaluation test set -> Only test samples wihich fullfill evaluation_set_mask condition
+    # will stay
+    test_csr_masked = apply_mask_to_csr(
+        csr_matrix=test_csr,
+        mask=evaluation_set_mask
+    )
+
+    print(f"Test data entries after masking: {test_csr_masked.nnz}")
+    # ratio = evaluation_set_mask.sum() / train_coo.shape[0] * 100
+    # print(f"\nTHe evaluation set includes {ratio:.2f} % of the original train/test data.")
+
+    test_filtered_df = pd.DataFrame.sparse.from_spmatrix(test_csr_masked)
+
+    # Store df ins csv files
+    df.to_csv("data/preprocessing_steps/original.csv", index=False)
+    df_nans.to_csv("data/preprocessing_steps/nans.csv", index=False)
+    df_pos.to_csv("data/preprocessing_steps/df_pos.csv", index=False)
+    train_df.to_csv("data/preprocessing_steps/train_df.csv", index=False)
+    test_df.to_csv("data/preprocessing_steps/test_df.csv", index=False)
+    test_filtered_df.to_csv("data/preprocessing_steps/test_filtered.csv", index=False)
 
 
 def evaluate_als(
@@ -772,3 +976,15 @@ def recommend_item(
 
     # Last resort: empty list (don’t crash pipeline)
     return []
+
+
+def main():
+    df_ratings = create_test_data()
+    prepare_data_streamlit(
+        df=df_ratings,
+        pos_threshold=3
+    )
+
+
+if __name__ == "__main__":
+    main()
