@@ -155,7 +155,16 @@ Project Organization
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
 
+# Architecture and Pipeline
+
 <img src="streamlit/utils/pipeline_refresh.svg" width="400" alt="Pipeline Flowchart"/>
+
+The project is realized as a multi-container app. It consists of 5 Docker containers which are defined and configured with a docker-compose. The 5 containers are:
+- **postgres_db:** Contains the database with the data needed to train the model
+- **mlflow_server:** Runs the MLflow server which tracks the experiments and runs
+- **movie_rec_api:** Hosts the API Endpoints
+- **streamlit_app:** Contains a streamlit server for demo/presentation purposes as well as for providing a UI
+- **daily_trainer:** Triggers a daily model-training as well as a refreshing of the data suitable for training
 
 
 # Project setup
@@ -175,7 +184,7 @@ data/ml-20m
 - ratings.csv
 - movies.csv
 
-For the next step, run the script src/data/postgre_db_creation to generate a database from the csv's in ml-20m. Make a backup of the DB with the name dump.sql
+For the next step, run the script src/data/postgre_db_creation.py to generate a database from the csv's in ml-20m. Make a backup of the DB with the name dump.sql
 
 data/dump
 - dump.sql (backup of original DB)
