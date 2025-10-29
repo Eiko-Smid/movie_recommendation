@@ -148,8 +148,7 @@ data/ml-20m
 - ratings.csv
 - movies.csv
 
-Copy the following content inside a folder called .env, in the project root.
-.env file (adapt to your db-name, username, and password)
+Copy the following content inside a folder called .env, in the project root. Adapt data to your preferences.
 ```
 DB_URL=postgresql+psycopg2://postgres:Dbzices##01@postgres:5432/movielens_db
 POSTGRES_DB=movielens_db
