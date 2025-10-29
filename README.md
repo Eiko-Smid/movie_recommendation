@@ -157,7 +157,7 @@ Project Organization
 
 # Architecture and Pipeline
 
-<img src="streamlit/utils/pipeline_refresh.svg" width="400" alt="Pipeline Flowchart"/>
+![Pipeline Flowchart](streamlit/utils/pipeline_refresh.svg)
 
 The project is realized as a multi-container app. It consists of 5 Docker containers which are defined and configured with a docker-compose. The 5 containers are:
 - **postgres_db:** Contains the database with the data needed to train the model
