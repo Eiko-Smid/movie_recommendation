@@ -1,14 +1,20 @@
 import streamlit as st
 import pandas as pd
 
-# --- Page setup ---
-st.set_page_config(
-    page_title="Movie Recommender – Task & Solution",
-    page_icon="🎬",
-    layout="centered"
+# Apply global text alignment and formatting
+st.markdown(
+    """
+    <style>
+    /* Justify all paragraph and markdown text */
+    p, li {
+        text-align: justify !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
-st.title("🎬 Movie Recommender System – Task and Solution")
+st.title("🎬 Introduction to Movie Recommendation")
 st.markdown("---")
 
 # --- Function to display DataFrame with style ---
@@ -31,10 +37,10 @@ def show_dataframe(df, rows=None, cols=None):
     st.dataframe(styled, width="stretch")
 
 # --- Introduction ---
-st.header("📖 Introduction")
+st.header("📖 The history of movie recommendation")
 st.markdown("""
-Recommender systems are one of the oldest yet most relevant problems in machine learning.  
-They have been used since the 1990s to predict what items users might also like.  
+Recommender systems are one of the oldest yet most relevant problems in machine learning. They have been used since
+the 1990s to predict what items users might also like.  
 
 An “item” can be anything:
 - 🎬 Movies  
@@ -42,10 +48,12 @@ An “item” can be anything:
 - 🛒 Products  
 - 📰 News articles  
 
-Early systems were simple — they suggested items based on similar users or similar content.  
-A turning point came in **2006** with the **Netflix Prize**, a public competition to improve Netflix’s movie recommendation algorithm by 10% in RMSE, with a prize of **$1 million**.
+Early systems were simple — they suggested items based on similar users or similar content. A turning point came 
+in **2006** with the **Netflix Prize**, a public competition to improve Netflix’s movie recommendation algorithm 
+by 10% in RMSE, with a prize of **$1 million**.
 
-Since then, recommender systems have become increasingly important and remain a major research field with huge economic relevance:
+Since then, recommender systems have become increasingly important and remain a major research field with huge economic
+relevance:
 
 - **Amazon** has reported that **35%** of its revenue comes from recommender systems.  
 - **Netflix** says that **80%** of streamed content is chosen through recommendations.  
@@ -58,18 +66,17 @@ Since then, recommender systems have become increasingly important and remain a 
 # --- Task & Dataset ---
 st.header("🎯 Task and Dataset")
 st.markdown("""
-The task is to create a **movie recommendation system** based on the **MovieLens 20M Dataset**,  
-which contains **20 million user ratings** for approximately **27,000 movies**.
+The task is to create a **movie recommendation system** based on the **MovieLens 20M Dataset**, which contains **20 
+million user ratings** for approximately **27,000 movies**.
 
-Conceptually, this can be seen as a large **user–movie matrix**,  
-where each **row** represents a user *u* and each **column** a movie *v*.
+Conceptually, this can be seen as a large **user–movie matrix**, where each **row** represents a user *u* and each **column** a movie *v*.
 
-Because not every user rated every movie, many entries are **unknown** —  
-this makes the matrix **sparse**, which is one of the main challenges in recommender systems.
+Because not every user rated every movie, many entries are **unknown** this makes the matrix **sparse**, which is one of the main challenges
+in recommender systems.
 """)
 
 # --- Example Table using show_dataframe() ---
-st.subheader("📊 Example: User–Movie Rating Matrix")
+st.caption("📊 Example: User–Movie Rating Matrix")
 
 data = {
     "Movie 1": [3, 4, 4, "..."],

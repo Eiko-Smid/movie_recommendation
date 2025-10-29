@@ -7,12 +7,25 @@ from sqlalchemy import create_engine
 from dotenv import load_dotenv
 
 
+# Apply global text alignment and formatting
+st.markdown(
+    """
+    <style>
+    /* Justify all paragraph and markdown text */
+    p, li {
+        text-align: justify !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
 st.title("The MovieLens 20M Dataset🎞️")
 st.markdown("""
-The **MovieLens 20M** dataset is a stable benchmark dataset for building and 
-evaluating movie recommendation systems.
-It includes about 20 million user ratings applied to ~27,000 movies by ~138,000 users between 1995 and 2015.
-In this project, we focus on  two  key tables:
+The **MovieLens 20M** dataset is a stable benchmark dataset for building and evaluating movie recommendation systems.
+It includes about 20 million user ratings applied to ~27,000 movies by ~138,000 users between 1995 and 2015. In this
+project, we focus on  two  key tables:
             
 🎬**movies.csv** contains movie metadata, including:
             
