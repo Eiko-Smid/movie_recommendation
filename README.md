@@ -12,7 +12,7 @@ It also motivates the use of *implicit feedback* methods, focusing on positive s
 - **movies.csv**: Contains movie metadata — unique movie IDs, titles, and pipe-separated genre lists (e.g., Action|Adventure|Sci-Fi).  
 - **ratings.csv**: Holds timestamped user ratings in the 0.5 to 5.0 star range, recording userId, movieId, rating, and timestamp.
 
-This rich annotation allows the system to understand both user behavior and item characteristics.
+This annotation allows the system to understand both user behavior and item characteristics.
 
 ## Goal
 1. **Predict missing ratings** in the user–movie matrix.  
@@ -21,9 +21,11 @@ This rich annotation allows the system to understand both user behavior and item
 ## Collaborative Filtering Approach
 We chose classical collaborative filtering via **Matrix Factorization** powered by the Alternating Least Squares (ALS) algorithm.
 - The sparse user-item matrix \( R \) is factorized into two low-rank matrices:
-\[
-\hat{R} = U \times V^\top
-\]
+
+$$
+\hat{R} = U \times V^\top\
+$$
+
 where \( U \) encodes user latent features and \( V \) encodes item latent features.  
 - These latent factors represent hidden preferences and characteristics, capturing patterns beyond explicit data.  
 - ALS iteratively alternates between optimizing \( U \) and \( V \) by minimizing a cost function that balances fit to the data and regularization to prevent overfitting.  
@@ -53,26 +55,9 @@ Project Organization
     │   └── champion_train_csr.npz
     │   
     ├── data/
-    │   ├── dump/
-    │   │   └── dump.sql
-    │   ├── ml-20m/
-    │   │   ├── genome-scores.csv
-    │   │   ├── genome-tags.csv
-    │   │   ├── links.csv
-    │   │   ├── movies.csv
-    │   │   ├── ratings.csv
-    │   │   ├── README.txt
-    │   │   └── tags.csv 
-    │   │
-    │   └── preprocessing_steps/
-    │       ├── df_pos.csv
-    │       ├── nans.csv
-    │       ├── original.csv
-    │       ├── test_csr.csv
-    │       ├── test_df.csv
-    │       ├── test_filtered.csv
-    │       ├── train_csr.csv
-    │       └── train_df.csv 
+    │   ├── dump/...
+    │   ├── ml-20m/...
+    │   └── preprocessing_steps/...
     │
     ├── logs/
     │      
@@ -82,105 +67,31 @@ Project Organization
     │   ├── .gitkeep
     │   └── mlflow.db
     │
-    ├── models/
-    │   └── .gitkeep
+    ├── models/...
     │
-    ├── notebooks/
-    │   └── .gitkeep
+    ├── notebooks/...
     │
-    ├── postgres_data/
-    │   ├── base/...
-    │   ├── ...
-    │   ├── ...
-    │   └── postmaster.opts
+    ├── postgres_data/...
     │
-    ├── references/ 
-    │   └── .gitkeep
+    ├── references/...
     │        
-    ├── reports/
-    │   ├── figures/
-    │       └── .gitkeep
-    │   └── .gitkeep
+    ├── reports/...
     │
     ├── src/ 
-    │   ├── __pycache__/
-    │   │   └── __init__.cpython-311.pyc 
-    │   │  
-    │   │
-    │   ├── api/       
-    │   │   ├── __pycache__/
-    │   │   │   ├── config.cpython-311.pyc 
-    │   │   │   ├── movie_rec_api_and_mlflow_SQL.cpython-311.pyc 
-    │   │   │   └── movie_rec_api_and_mlflow.cpython-311.pyc  
-    │   │   │
-    │   │   └── movie_rec_api_and_mlflow_SQL.py
-    │   │   
-    │   ├── data/
-    │   │   ├── __pycache__/
-    │   │   ├── mlartifacts\1/
-    │   │   │   └── ...
-    │   │   │   └── models/...
-    │   │   │
-    │   │   ├── mlruns/
-    │   │   ├── __init__.py
-    │   │   ├── db_requests.py
-    │   │   ├── mlflow.db
-    │   │   ├── postrgre_db_creation.py
-    │   │   └── test_db_connection.py
-    │   │
-    │   ├── features/
-    │   │   ├── __init__.py
-    │   │   └── build_features.py
-    │   │
-    │   ├── models/         
-    │   │   ├── __pycache__/
-    │   │   │   ├── __init__.cpython-311.pyc 
-    │   │   │   └── als_movie_rec.cpython-311.pyc 
-    │   │   │
-    │   │   ├── __init__.py
-    │   │   └── als_movie_rec.py
-    │   │
-    │   ├── visualization/
-    │   │   ├── __init__.py
-    │   │   └── visualize.py
-    │   │
+    │   ├── __pycache__/...
+    │   ├── api/...      
+    │   ├── data/...
+    │   ├── features/...
+    │   ├── models/...         
+    │   ├── visualization/...
     │   ├── __init__.py
-    │   │
     │   └── config     
     │
     │ 
     ├── streamlit/ 
-    │   ├── drawios/      
-    │   │   ├── API_health.drawio.svg
-    │   │   ├── API_recommend.drawio.svg
-    │   │   ├── API_refresh.drawio.svg
-    │   │   ├── API_train.drawio.svg
-    │   │   
-    │   ├── pages/      
-    │   │   ├── 01_Introduction.py
-    │   │   ├── 02_The_Model.py
-    │   │   ├── 03_Dataset_Description.py
-    │   │   ├── 04_Data_Preprocessing.py
-    │   │   ├── 05_Pipeline_Overview.py
-    │   │   ├── 06_API_Description.py 
-    │   │   ├── 07_API_Endpoints.py
-    │   │   ├── 08_Project_Outlook.py
-    │   │   └── 09_Thank_You.py 
-    │   │
+    │   ├── drawios/...       
+    │   ├── pages/...      
     │   ├── utils/...    
-    │   │   ├── __init__.py
-    │   │   ├── alex-litvin-MAYsdoYpGuk-unsplash.jpg
-    │   │   ├── API_health.svg
-    │   │   ├── API_recommend.svg
-    │   │   ├── API_refresh.svg  
-    │   │   ├── API_train.svg
-    │   │   ├── denise-jans-Lq6rcifGjOU-unsplash.jpg
-    │   │   ├── pipeline_refresh.svg
-    │   │   ├── pipeline.svg
-    │   │   ├── samuel-regan-asante-wMkaMXTJjlQ-unsplash.jpg
-    │   │   ├── tyson-moultrie-BQTHOGNHo08-unsplash.jpg
-    │   │   └── ui_table.py
-    │   │  
     │   └── streamlit_app.py
     │
     ├── streamlit_cache/...
@@ -248,6 +159,8 @@ git clone https://github.com/DataScientest-Studio/sep25_bmlops_int_movie_reco.gi
 --------
 
 ### 2. Add files
+
+Download and extract the Movielens DB from https://grouplens.org/datasets/movielens/20m/ and follow the next steps.
 
 Folders to add:
 
