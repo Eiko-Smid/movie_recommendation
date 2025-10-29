@@ -266,6 +266,9 @@ def prepare_data(
 
 
 def create_test_data():
+    '''
+    Create testdata for testing als model and preprocessing.
+    '''
     n_users = 6
     # users_ids = np.arange(n_users)
     # movie_ids = np.arange(n_users)
@@ -323,8 +326,8 @@ def prepare_data_streamlit(
     and test and build scr matrixes of them. The test csr matrix will be filtered. 
     All train rows that have lessthan 5 train entries and 1 test entries will be set
     to zero. The zero lines will be automaticallyignored when computing the evaluation
-    metrics. Returns the train, test csr filtered test csr matrices, the mappings and
-    the evaluation_set_mask used for filtering the test csr matrix.
+    metrics. 
+    Stores all the steps in df's and stores them under /data/preprocessing_steps.
 
     Parameters
     ----------
@@ -337,22 +340,6 @@ def prepare_data_streamlit(
     pos_threshold (float, optional):
             Minimum rating to treat an interaction as positive (kept in the dataset).
             Defaults to 4.0.
-
-    Returns
-    -------
-    train_csr: csr_matrix:
-        The train csr matrix (user-item) used for training the model.
-    test_csr: csr_matrix:
-        Binary user–item matrix for the full test split (unmasked).
-    test_csr_masked: csr_matrix
-        The filtered csr matrix used for evaluating the model. All train rows that have
-        less than 5 train entries and 1 test entries will be set to zero. The zero lines
-        will be automatically ignored when computing the evaluation metrics.
-    mappings: Mappings:
-        Stores the relevant mappings needed to transfer the df user/item ids to the user/item ids of 
-        the csr matrices.
-    evaluation_set_mask: np.ndarray:
-        Boolean mask where `True` marks users with ≥5 train items and ≥1 test item.
     '''
     print(f"\nOriginal df shape: {df.shape}")
     print(f"Original df:\n{df.head(20)}")

@@ -39,96 +39,6 @@ where \( U \) encodes user latent features and \( V \) encodes item latent featu
 ---
 
 
-Project Organization
-------------
-    sep25_bmlops_int_movie_reco/
-    │
-    ├── .github/workflows
-    │   └── python-app.yml
-    │
-    ├── .venv/...
-    │
-    ├── .vscode/
-    │   └── launch.json
-    │
-    ├── champ_store/
-    │   └── champion_train_csr.npz
-    │   
-    ├── data/
-    │   ├── dump/...
-    │   ├── ml-20m/...
-    │   └── preprocessing_steps/...
-    │
-    ├── logs/
-    │      
-    ├── mlflow/
-    │   ├── mlartifacts\1/...
-    │   ├── mlruns
-    │   ├── .gitkeep
-    │   └── mlflow.db
-    │
-    ├── models/...
-    │
-    ├── notebooks/...
-    │
-    ├── postgres_data/...
-    │
-    ├── references/...
-    │        
-    ├── reports/...
-    │
-    ├── src/ 
-    │   ├── __pycache__/...
-    │   ├── api/...      
-    │   ├── data/...
-    │   ├── features/...
-    │   ├── models/...         
-    │   ├── visualization/...
-    │   ├── __init__.py
-    │   └── config     
-    │
-    │ 
-    ├── streamlit/ 
-    │   ├── drawios/...       
-    │   ├── pages/...      
-    │   ├── utils/...    
-    │   └── streamlit_app.py
-    │
-    ├── streamlit_cache/...
-    │  
-    ├── .env
-    │  
-    ├── .gitignore
-    │  
-    ├── docker-compose.yml
-    │  
-    ├── Dockerfile.api    
-    │
-    ├── Dockerfile.mlflow
-    │  
-    ├── Dockerfile.streamlit
-    │  
-    ├── LICENSE
-    │
-    ├── README.md
-    │  
-    ├── requirements.in   
-    │  
-    ├── requirements.txt 
-    │  
-    ├── terminal_out.txt
-    │  
-    └── train_payload.json
-
-
-
-## Main Folders
-
-- **data/**: Contains raw datasets, processed data, and intermediate files used during preprocessing and modeling.
-- **src/**: Source code for data loading, feature engineering, model development, and utility functions.
-- **streamlit/**: Streamlit app scripts and static assets like images, SVGs, and visualizations for interactive demos.
---------
-
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
 
 # Architecture and Pipeline
@@ -149,6 +59,76 @@ The project is realized as a multi-container app. It consists of 5 Docker contai
   - Model training: Triggers the /train endpoint daily at 2:00
 
 
+
+Project Organization
+------------
+    sep25_bmlops_int_movie_reco/
+    │
+    ├── .github/workflows             <- Github workflow check
+    │   └── python-app.yml
+    │
+    ├── .vscode/                      <- Infos for python debugger to enable api debug transfer from api container to host system 
+    │   └── launch.json
+    ├
+    ├── artifacts_tmp                 <- Storage for champion model
+    │   └── model_state.joblib
+    │
+    ├── champ_store/                  <- Storage for champion train csr matrix
+    │   └── champion_train_csr.npz
+    │   
+    ├── data/                         <- Storage for dataset
+    │   └── ml-20m/...   
+    │
+    │      
+    ├── mlflow/                       <- MLFLow artifact storage
+    │   ├── mlartifacts\1/...
+    │   ├── mlruns
+    │   ├── .gitkeep
+    │   └── mlflow.db
+    │        
+    ├── src/                          <- Source code for api, data base communication, model training/recommendation 
+    │   ├── __pycache__/...
+    │   ├── api/...      
+    │   ├── data/...
+    │   ├── models/...         
+    │   └── __init__.py
+    │
+    │ 
+    ├── streamlit/                    <- Code and database for streamlit application
+    │   ├── drawios/...       
+    │   ├── pages/...  
+    │   │── preprocessing_steps/...    
+    │   ├── utils/...    
+    │   └── streamlit_app.py
+    │
+    ├── streamlit_cache/...           <- Cached streamlit data to fasten up page loading
+    │  
+    ├── .env                          <- Environment file containing individual data base settings
+    │  
+    ├── .gitignore
+    │  
+    ├── docker-compose.yml            <- File to build and launch docker containers 
+    │  
+    ├── Dockerfile.api                <- Dockerfile for api
+    │
+    ├── Dockerfile.mlflow             <- Dockerfile for MLFlow server
+    │  
+    ├── Dockerfile.streamlit          <- Dockerfile for streamlit application
+    │  
+    ├── LICENSE
+    │
+    ├── README.md
+    │  
+    ├── requirements.in   
+    │  
+    ├── requirements.txt            <- Requirements to install python packages in container
+    │  
+    └── train_payload.json          <- Training payload to call api train endpoint with chronjob
+
+
+
+--------
+
 # Project setup
 
 ### 1. Clone repo
@@ -168,12 +148,7 @@ data/ml-20m
 - ratings.csv
 - movies.csv
 
-For the next step, run the script src/data/postgre_db_creation.py to generate a database from the csv's in ml-20m. Make a backup of the DB with the name dump.sql
-
-data/dump
-- dump.sql (backup of original DB)
-
-.env file (adapt to your db-name, username, and password)
+Copy the following content inside a folder called .env, in the project root. Adapt data to your preferences.
 ```
 DB_URL=postgresql+psycopg2://postgres:Dbzices##01@postgres:5432/movielens_db
 POSTGRES_DB=movielens_db
@@ -199,17 +174,10 @@ if build failed and you want clean new setup.
 docker compose up
 ```
 
-### 5. Start Debugger
-
-- Go to vscode debugger (Run and Debug) in left sidebar
-- Click on green play button
-
 ### 6. Wait until SQL DB is up
 
 - If error in train endpoint happens, is mostly due to the fact that the DB isn't finished creating
 - Just wait a few seconds and try again
-
-
 
 
 

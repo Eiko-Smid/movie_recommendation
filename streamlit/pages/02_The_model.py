@@ -44,7 +44,7 @@ st.markdown(
 )
 
 
-st.title("Alternating Least Squares")
+st.title("🔢 Alternating Least Squares")
 st.write(
     """
 The goal of the algorithm is to fill in the missing ratings based on the given rating in the user-item matrix.
