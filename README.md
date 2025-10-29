@@ -160,11 +160,17 @@ Project Organization
 ![Pipeline Flowchart](streamlit/utils/pipeline_refresh.svg)
 
 The project is realized as a multi-container app. It consists of 5 Docker containers which are defined and configured with a docker-compose. The 5 containers are:
-- **postgres_db:** Contains the database with the data needed to train the model
-- **mlflow_server:** Runs the MLflow server which tracks the experiments and runs
+- **postgres_db:** Contains the database with the data needed to train the model. The data originates from the Movielens Database. It is used by the streamlit_app and the movie_rec_api container to provide their services.
+- **mlflow_server:** Runs the MLflow server which tracks the experiments and runs, as well as model metrics and artifacts
 - **movie_rec_api:** Hosts the API Endpoints
+  - _/health:_ Checks the readiness of the mlflow server and the database
+  - _/refresh-mv:_ Refreshes the materialized view. Database is updated with newest data
+  - _/train:_ Fetches data, trains the model, stores artifacts in mlflow, and sets current best model as production model
+  - _/recommend:_ Generates predictions based on the current production model
 - **streamlit_app:** Contains a streamlit server for demo/presentation purposes as well as for providing a UI
-- **daily_trainer:** Triggers a daily model-training as well as a refreshing of the data suitable for training
+- **daily_trainer:** Contains two cronjob tasks
+  -_Database refresh:_ Triggers the /refresh-mv endpoint daily at 1:55
+  -_Model training:_ Triggers the /train endpoint daily at 2:00
 
 
 # Project setup
