@@ -153,10 +153,11 @@ data/ml-20m
 
 Copy the following content inside a folder called .env, in the project root. Adapt data to your preferences.
 ```
-DB_URL=postgresql+psycopg2://postgres:Dbzices##01@postgres:5432/movielens_db
 POSTGRES_DB=movielens_db
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=password
+DB_URL=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+DB_URL=postgresql+psycopg2://postgres:password@postgres:5432/movielens_db
 ```
 
 ### 3. Build docker container
