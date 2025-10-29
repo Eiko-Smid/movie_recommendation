@@ -35,13 +35,16 @@ st.markdown(
     .wrap-text th {
         text-align: center !important;
     }
+    p, li {
+        text-align: justify !important;
+    }
     </style>
     """,
     unsafe_allow_html=True
 )
 
 
-st.title("Our ALS Model")
+st.title("Alternating Least Squares")
 st.write(
     """
 The goal of the algorithm is to fill in the missing ratings based on the given rating in the user-item matrix.
@@ -108,32 +111,38 @@ df = df.astype(str)
 show_dataframe(df)
 
 
-st.markdown("""
-Example:
+st.markdown(r"""
+    Example: 
+                
+    Lets say we define f=3 latent factors.. Then user u might be represented as:
 
-	Lets say we define f=3 latent factors.. Then user u might be represented as:
-	
-	Uu = [0.8, -0.1, 0.4]
-	
-	And item i is represented by the following vector.
-	
-	Vi = [0.9, -0.3, 0.5]
-	
-	If we wanne find out hwo much user u likes item i, than we have to multiply both vectors:
-	
-	r^_ui = Uu^T * Vt = 0.8 * 0.9 + (-0.1) * (-0.3) + 0.4 * 0.5 = 0.95 -> Low rating on ratings from 1 to 5
-	
+    $$
+    U_u = [0.8, -0.1, 0.4]
+    $$
+
+    And item i is represented by the following vector:
+
+    $$
+    V_i = [0.9, -0.3, 0.5]
+    $$
+                
+    If we wanne find out hwo much user u likes item i, than we have to multiply both vectors:
+            
+    $$
+    \hat{r}_{ui} = U_u^{T} \cdot V_i = 0.8 \cdot 0.9 + (-0.1) \cdot (-0.3) + 0.4 \cdot 0.5 = 0.95
+    $$
+
 """)
 
 
-st.title("Building the factorizaton")
+st.header("Building the factorizaton")
 
 
-st.markdown("""
+st.markdown(r"""
 The goal of the algorithm is to minimize a cost function such that the known ratings in the original dataset
 gets approximated by the matrix multiplication as best as possible.  Indeed, the cost functions shows us
 that we are trying to minimize the squared errors between the known ratings of the original matrix R and 
-the predicted ratings (U_u^T * V_i). The second term is a regularization term which penalizes large values
+the predicted ratings $$(U_u^{T} \cdot V_i)$$. The second term is a regularization term which penalizes large values
 in U and V, such that the ratings won't get too big.
 """)
 
@@ -143,11 +152,11 @@ J = \sum_{u,i} c_{ui} \left(p_{ui} - U_u^{T} V_i \right)^2
 """)
 
 st.markdown("""
-K: Set of known user/item pairs
-Lambda: regularization, Prevents overfitting by penalizing large latent vector norms
-U: User-latent -matrix
-V: item-latent -matrix
-pui: 1 if user interacted with item i, else 0
+K: Set of known user/item pairs\n
+Lambda: regularization, Prevents overfitting by penalizing large latent vector norms\n
+U: User-latent -matrix\n
+V: item-latent -matrix\n
+pui: 1 if user interacted with item i, else 0\n
 cui: Confedence how mcuh we trust the interactions
             
 The minimization of the cost function is done in two alternating steps:
@@ -163,7 +172,7 @@ verall called Alternating Leaast Squares.
 
 """)
 
-st.title("Recommend items")
+st.header("Recommend items")
 
 st.markdown("""
 Recommeding a mvoie for a user i simple, when the matrix factorization has been computed. Lets say that
@@ -187,9 +196,10 @@ st.markdown("""
 Now we can simply lookup and see that the user 3 has a value of 4 for movie 3 now, so we could recommend
 this movie to him. For every user we can:
 
-	1) Make a list of all ratings, he headn't had before user 3 : [(3, 4), (4, 5),
-        (6, 4.5)]
-	2) Sort this list from highest to lowest rating : [(4, 5), (6, 4.5), (3, 4)] 
+	1) Make a list of all ratings, he hadn't had before: 
+            [(3, 4), (4, 5), (6, 4.5)]
+	2) Sort this list from highest to lowest rating: 
+            [(4, 5), (6, 4.5), (3, 4)] 
     3) Recommend the top 3 -> first 3 movies in the list -> movies 4, 6, 3
 """)
 

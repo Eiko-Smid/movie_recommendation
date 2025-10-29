@@ -1,6 +1,20 @@
 import streamlit as st
 import os
 
+# Apply global text alignment and formatting
+st.markdown(
+    """
+    <style>
+    /* Justify all paragraph and markdown text */
+    p, li {
+        text-align: justify !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
 st.title("🎬 **Movie Recommendation System MLOps Pipeline**")
 
 st.markdown('''
@@ -48,9 +62,10 @@ with st.expander("Streamlit"):
     """)
  
 st.markdown('''   
-Coordinating these components with two daily Cronjobs —one to refresh filtered training data at 1:55 UTC, and one to retrain and deploy models at 2:00 UTC— enforces continuous training and model evaluation,
-enabling the system to adapt automatically and prevent model drift.
-This architecture therefore, delivers a scalable, maintainable and self-improving MLOps deployment for movie recommendations.
+Coordinating these components with two daily Cronjobs —one to refresh filtered training data at 1:55 UTC, and one to retrain
+and deploy models at 2:00 UTC— enforces continuous training and model evaluation, enabling the system to adapt automatically
+and prevent model drift. This architecture therefore, delivers a scalable, maintainable and self-improving MLOps deployment for 
+movie recommendations.
 ''')
 
 
