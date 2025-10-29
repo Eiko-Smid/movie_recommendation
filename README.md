@@ -1,7 +1,43 @@
-Project Name
+# Movie Recommendation Project
 ==============================
 
-This project is a starting Pack for MLOps projects based on the subject "movie_recommandation". It's not perfect so feel free to make some modifications on it.
+## Introduction
+This project implements a movie recommendation system based on the widely used MovieLens 20 Million dataset. Recommender systems have been a key focus of machine learning since the 1990s, powering personalized suggestions across many domains like movies, music, products and news.
+
+The main challenge lies in the *sparsity* of the user-item rating matrix. Out of over 3.7 billion possible user-movie pairs (138,000 users × 27,000 movies), only around 20 million ratings exist, meaning roughly 99.5% of the matrix is unknown.  
+Sparsity explains why simple popularity-based or average rating methods often fail, pushing the field toward collaborative filtering and matrix factorization techniques. These techniques identify latent patterns and enable predictions even with very few observed interactions.  
+It also motivates the use of *implicit feedback* methods, focusing on positive signals, to build more reliable recommendations.
+
+## Dataset
+- **movies.csv**: Contains movie metadata — unique movie IDs, titles, and pipe-separated genre lists (e.g., Action|Adventure|Sci-Fi).  
+- **ratings.csv**: Holds timestamped user ratings in the 0.5 to 5.0 star range, recording userId, movieId, rating, and timestamp.
+
+This annotation allows the system to understand both user behavior and item characteristics.
+
+## Goal
+1. **Predict missing ratings** in the user–movie matrix.  
+2. **Recommend top K movies** with the highest predicted ratings to each user, focusing on movies the user has not yet rated.
+
+## Collaborative Filtering Approach
+We chose classical collaborative filtering via **Matrix Factorization** powered by the Alternating Least Squares (ALS) algorithm.
+- The sparse user-item matrix \( R \) is factorized into two low-rank matrices:
+
+$$
+\hat{R} = U \times V^\top\
+$$
+
+where \( U \) encodes user latent features and \( V \) encodes item latent features.  
+- These latent factors represent hidden preferences and characteristics, capturing patterns beyond explicit data.  
+- ALS iteratively alternates between optimizing \( U \) and \( V \) by minimizing a cost function that balances fit to the data and regularization to prevent overfitting.  
+- The number of latent factors controls model complexity: more factors capture richer patterns but risk overfitting.
+
+## Why This Approach?
+- **Scalable and robust**, handling large, sparse datasets efficiently.  
+- Works well with *implicit feedback*, using confidence weights to reflect interaction certainty.  
+- Well-supported by mature libraries (e.g., Implicit) that simplify implementation and evaluation.  
+- Balanced trade-off between predictive performance and complexity, ideal for building a reliable MLOps pipeline.
+---
+
 
 Project Organization
 ------------
@@ -19,101 +55,43 @@ Project Organization
     │   └── champion_train_csr.npz
     │   
     ├── data/
-    │   ├── dump/
-    │   │   └── dump.sql
-    │   └── ml-20m/
-    │       ├── genome-scores.csv
-    │       ├── genome-tags.csv
-    │       ├── links.csv
-    │       ├── movies.csv
-    │       ├── ratings.csv
-    │       ├── README.txt
-    │       └── tags.csv 
+    │   ├── dump/...
+    │   ├── ml-20m/...
+    │   └── preprocessing_steps/...
     │
     ├── logs/
+    │      
+    ├── mlflow/
+    │   ├── mlartifacts\1/...
+    │   ├── mlruns
+    │   ├── .gitkeep
+    │   └── mlflow.db
     │
-    ├── models/
-    │   └── .gitkeep
+    ├── models/...
     │
-    ├── notebooks/
-    │   └── .gitkeep
+    ├── notebooks/...
     │
-    ├── postgres_data/
-    │   ├── base/...
-    │   ├── ...
-    │   ├── ...
-    │   └── postmaster.opts
+    ├── postgres_data/...
     │
-    ├── references/ 
-    │   └── .gitkeep
+    ├── references/...
     │        
-    ├── reports/
-    │   ├── figures/
-    │       └── .gitkeep
-    │   └── .gitkeep
+    ├── reports/...
     │
     ├── src/ 
-    │   ├── __pycache__/
-    │   │   └── __init__.cpython-311.pyc 
-    │   │  
-    │   │
-    │   ├── api/       
-    │   │   ├── __pycache__/
-    │   │   │   ├── config.cpython-311.pyc 
-    │   │   │   ├── movie_rec_api_and_mlflow_SQL.cpython-311.pyc 
-    │   │   │   └── movie_rec_api_and_mlflow.cpython-311.pyc  
-    │   │   │
-    │   │   └── movie_rec_api_and_mlflow_SQL.py
-    │   │   
-    │   ├── data/
-    │   │   ├── __pycache__/
-    │   │   ├── mlartifacts\1/
-    │   │   │   └── ...
-    │   │   │   └── models/...
-    │   │   │
-    │   │   ├── mlruns/
-    │   │   ├── __init__.py
-    │   │   ├── db_requests.py
-    │   │   ├── mlflow.db
-    │   │   ├── postrgre_db_creation.py
-    │   │   └── test_db_connection.py
-    │   │
-    │   ├── features/
-    │   │   ├── __init__.py
-    │   │   └── build_features.py
-    │   │
-    │   ├── models/         
-    │   │   ├── __pycache__/
-    │   │   │   ├── __init__.cpython-311.pyc 
-    │   │   │   └── als_movie_rec.cpython-311.pyc 
-    │   │   │
-    │   │   ├── __init__.py
-    │   │   └── als_movie_rec.py
-    │   │
-    │   ├── visualization/
-    │   │   ├── __init__.py
-    │   │   └── visualize.py
-    │   │
+    │   ├── __pycache__/...
+    │   ├── api/...      
+    │   ├── data/...
+    │   ├── features/...
+    │   ├── models/...         
+    │   ├── visualization/...
     │   ├── __init__.py
-    │   │
     │   └── config     
     │
     │ 
     ├── streamlit/ 
-    │   ├── pages/      
-    │   │   ├── 01_A_Bit_Of_History.py
-    │   │   ├── 02_ALS_Model.py
-    │   │   ├── 03_ALS_Model2.py
-    │   │   ├── 04_Dataset_Description.py
-    │   │   ├── 05_Pipeline_Overview.py
-    │   │   ├── 06_API_Endpoints.py 
-    │   │   ├── 07_Project_Outlook.py
-    │   │   └── 08_Thank_You.py 
-    │   │
-    │   ├── utils/
-    │   │   ├── pipeline_refresh.svg
-    │   │   └── pipeline.svg
-    │   │  
+    │   ├── drawios/...       
+    │   ├── pages/...      
+    │   ├── utils/...    
     │   └── streamlit_app.py
     │
     ├── streamlit_cache/...
@@ -121,12 +99,6 @@ Project Organization
     ├── .env
     │  
     ├── .gitignore
-    │
-    ├── 1_Training_before_test_set_filtering.txt   
-    │  
-    ├── 2_Training_after_test_set_filtering.txt 
-    │  
-    ├── 3_Training.txt
     │  
     ├── docker-compose.yml
     │  
@@ -137,8 +109,6 @@ Project Organization
     ├── Dockerfile.streamlit
     │  
     ├── LICENSE
-    │       
-    ├── pipeline.drawio.svg
     │
     ├── README.md
     │  
@@ -151,6 +121,12 @@ Project Organization
     └── train_payload.json
 
 
+
+## Main Folders
+
+- **data/**: Contains raw datasets, processed data, and intermediate files used during preprocessing and modeling.
+- **src/**: Source code for data loading, feature engineering, model development, and utility functions.
+- **streamlit/**: Streamlit app scripts and static assets like images, SVGs, and visualizations for interactive demos.
 --------
 
 <p><small>Project based on the <a target="_blank" href="https://drivendata.github.io/cookiecutter-data-science/">cookiecutter data science project template</a>. #cookiecutterdatascience</small></p>
@@ -183,6 +159,8 @@ git clone https://github.com/DataScientest-Studio/sep25_bmlops_int_movie_reco.gi
 --------
 
 ### 2. Add files
+
+Download and extract the Movielens DB from https://grouplens.org/datasets/movielens/20m/ and follow the next steps.
 
 Folders to add:
 
@@ -230,3 +208,13 @@ docker compose up
 
 - If error in train endpoint happens, is mostly due to the fact that the DB isn't finished creating
 - Just wait a few seconds and try again
+
+
+
+
+
+-----------------------
+## References and Further Reading
+- [Amazon: Customer Experience and Recommendation Algorithms](https://www.customercontactweekdigital.com/customer-insights-analytics/news/amazon-algorithm-customer-experience)  
+- [Wired: How Netflix’s Algorithms Work](https://www.wired.com/story/how-do-netflixs-algorithms-work-machine-learning-helps-to-predict-what-viewers-will-like/)  
+- [Matrix Factorization and ALS Deep Dive](https://towardsdatascience.com/recsys-series-part-4-the-7-variants-of-matrix-factorization-for-collaborative-filtering-368754e4fab5/)
