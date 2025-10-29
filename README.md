@@ -175,10 +175,12 @@ data/ml-20m
 - ratings.csv
 - movies.csv
 
+For the next step, run the script src/data/postgre_db_creation to generate a database from the csv's in ml-20m. Make a backup of the DB with the name dump.sql
+
 data/dump
 - dump.sql (backup of original DB)
 
-.env (file)
+.env file (adapt to your db-name, username, and password)
 ```
 DB_URL=postgresql+psycopg2://postgres:Dbzices##01@postgres:5432/movielens_db
 POSTGRES_DB=movielens_db
