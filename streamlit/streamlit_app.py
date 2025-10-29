@@ -28,7 +28,7 @@ with col2:
 
 col3, col4 = st.columns([2, 3])
 with col3:
-    st.write(".")
+    st.write("*Eiko Smid, Viktor Zivkov & Faith Osu Walter*")
 
 with col4:
     movie_img2 = os.path.join(base_dir, "utils/denise-jans-Lq6rcifGjOU-unsplash.jpg")
