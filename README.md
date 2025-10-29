@@ -85,7 +85,10 @@ Project Organization
     │   ├── mlruns
     │   ├── .gitkeep
     │   └── mlflow.db
-    │        
+    │
+    ├── postgres/
+    │   └── initdb/                   <- Setup files for creating the data base automatically         
+    │
     ├── src/                          <- Source code for api, data base communication, model training/recommendation 
     │   ├── __pycache__/...
     │   ├── api/...      
