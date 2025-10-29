@@ -14,28 +14,33 @@ services:
       - ./mlflow:/mlflow
 
 
-  # PostgreSQL Database
+# PostgreSQL Database
   postgres:
-    image: postgres:15
+    image: postgres:16
     container_name: postgres_db
     restart: "no"
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}         # the DB that will get initialized
+      PGDATA: /var/lib/postgresql/data    # default; can be omitted
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 10s
       retries: 40
       start_period: 30s
-    ports:
-      - "5432:5432"
     volumes:
-       # Persistent database files on host:
-      - ./postgres_data:/var/lib/postgresql/data
-      # Auto-restore on first init (runs only when data dir is empty):
-      - ./data/dump:/docker-entrypoint-initdb.d:ro
+      # Persist database files
+      - pgdata:/var/lib/postgresql/data
+
+      # Auto-init scripts (run only on first boot of a fresh volume)
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+
+      # Mount CSVs into a known path the init scripts can access
+      - ./data/ml-20m:/seed:ro
 
   api:
     build:
@@ -89,7 +94,7 @@ services:
 
 
 
-  # 🕐 Scheduled Trainer (daily retraining)
+  # Scheduled Trainer (daily retraining)
   # Training can be manually started with: docker exec -it daily_trainer sh -c "curl -X POST http://api:8000/train -H 'Content-Type: application/json' -d @/data/train_payload.json
   trainer:
     image: curlimages/curl:8.5.0
@@ -110,3 +115,10 @@ services:
     volumes:
       - ./logs:/var/log  # persist cron logs locally
       - ./train_payload.json:/data/train_payload.json:ro  # ✅ mount payload file read-only
+
+
+# Define storage locations handled by docker
+volumes:
+  # Tell docker to create a storage location named pgdata on host system 
+  # Storage is automatically created by docker
+  pgdata: 
