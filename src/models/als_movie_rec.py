@@ -127,7 +127,7 @@ def prepare_data(
     Prepare the data by dropping nans, keep only ratings > threshold, split into train
     and test and build scr matrixes of them. The test csr matrix will be filtered. 
     All train rows that have lessthan 5 train entries and 1 test entries will be set
-    to zero. The zero lines will be automaticallyignored when computing the evaluation
+    to zero. The zero lines will be automatically ignored when computing the evaluation
     metrics. Returns the train, test csr filtered test csr matrices, the mappings and
     the evaluation_set_mask used for filtering the test csr matrix.
 

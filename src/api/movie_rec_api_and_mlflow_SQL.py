@@ -916,7 +916,7 @@ async def lifespan(app: FastAPI):
     Ensures that the champ model and the corresponding train_csr matrix get's loaded
     when the API starts. 
     """
-    TRAIN_CSR_STORE.load()            # same logic as before
+    TRAIN_CSR_STORE.load()                          # same logic as before
     print("[champ-store] CSR loaded at startup")
 
     # Load global champ model

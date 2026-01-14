@@ -10,13 +10,13 @@ import pandas as pd
 
 
 # Database settings
-MV_NAME = "eligible_users"         # name of materialized view
-MIN_N_USER_RATINGS = 6           # users must have >=6 ratings
-ASSUMED_AVG_PER_USER = 50.0        # rough avg ratings per eligible user (for sizing K)
-RANDOM_OVERSAMPLE = 1.10           # oversample users by ~10% to hit target size
-TARGET_FLOOR_RATIO = 0.9           # accept result if >=90% of n_rows
-UNDERSHOOT_RETRY_FACTOR = 1.5      # if we undershoot badly, bump K by 50% once
-AUTO_REFRESH_MV = False            # keep False to stay within +20% runtime budget
+MV_NAME = "eligible_users"          # name of materialized view
+MIN_N_USER_RATINGS = 6              # users must have >=MIN_N_USER_RATINGS ratings to be part of MV
+ASSUMED_AVG_PER_USER = 50.0         # rough avg ratings per eligible user (for sizing K)
+RANDOM_OVERSAMPLE = 1.10            # oversample users by ~10% to hit target size
+TARGET_FLOOR_RATIO = 0.9            # accept result if >=90% of n_rows
+UNDERSHOOT_RETRY_FACTOR = 1.5       # if we undershoot badly, bump K by 50% once
+AUTO_REFRESH_MV = False             # keep False to stay within +20% runtime budget
 
 
 def _get_engine() -> Engine:
