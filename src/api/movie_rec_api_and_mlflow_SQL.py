@@ -65,8 +65,8 @@ from src.models.als_movie_rec import (
 )
 
 # Import sql request code
+from src.data.database_session import engine
 from src.data.db_requests import (
-    _get_engine,
     _create_mv_if_missing,
     _load_full_histories_for_n_users,
     refresh_mv
@@ -177,12 +177,11 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
         Data frame were each rows contains a pair of (movieId, title, genres)
 
     """
-    engine = _get_engine()
     n_users = int(train_param.n_users)
 
     try:
         # Creates a materialized view -> table of all users ids > 5 movie ratings
-        _create_mv_if_missing(engine)
+        _create_mv_if_missing()
 
         # Use default value for zero case
         if n_users == 0:
@@ -197,7 +196,7 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
                     )
             else:
                 # Load n_users 
-                df_ratings = _load_full_histories_for_n_users(engine, n_users_target=n_users)
+                df_ratings = _load_full_histories_for_n_users(n_users_target=n_users)
             
             # Load movies            
             df_movies = pd.read_sql_query(
@@ -962,7 +961,6 @@ def health_check():
     if not DB_URL:
         status_report["database"] = "missing DB_URL env var"
     try:
-        engine = _get_engine()
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         status_report["database"] = "reachable"

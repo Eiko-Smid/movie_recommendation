@@ -1,5 +1,4 @@
 import os
-import pytest
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
 

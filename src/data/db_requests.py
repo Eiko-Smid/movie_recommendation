@@ -8,6 +8,8 @@ from math import ceil
 from fastapi import HTTPException, status
 import pandas as pd
 
+from src.data.database_session import engine
+
 
 # Database settings
 MV_NAME = "eligible_users"          # name of materialized view
@@ -19,18 +21,7 @@ UNDERSHOOT_RETRY_FACTOR = 1.5       # if we undershoot badly, bump K by 50% once
 AUTO_REFRESH_MV = False             # keep False to stay within +20% runtime budget
 
 
-def _get_engine() -> Engine:
-    load_dotenv()
-    DB_URL = os.getenv("DB_URL")
-    if not DB_URL:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection URL not found in environment variables."
-        )
-    return create_engine(DB_URL)
-
-
-def _mv_exists(engine: Engine) -> bool:
+def _mv_exists() -> bool:
     q = text("""
         SELECT 1
         FROM pg_matviews
@@ -43,7 +34,8 @@ def _mv_exists(engine: Engine) -> bool:
     return res is not None
 
 
-def _ensure_indexes(engine: Engine) -> None:
+
+def _ensure_indexes() -> None:
     # Create helpful indexes (idempotent)
     with engine.begin() as conn:
         conn.execute(text(f"""
@@ -56,8 +48,8 @@ def _ensure_indexes(engine: Engine) -> None:
         """))
 
 
-def _create_mv_if_missing(engine: Engine) -> None:
-    if _mv_exists(engine):
+def _create_mv_if_missing() -> None:
+    if _mv_exists():
         return
     # Create MV (run once; safe to call every time)
     # Use a TX for CREATE; REFRESH CONCURRENTLY can't be in a TX, so we do not refresh here.
@@ -69,7 +61,7 @@ def _create_mv_if_missing(engine: Engine) -> None:
             GROUP BY "userId"
             HAVING COUNT(*) >= :min_r;
         """), {"min_r": MIN_N_USER_RATINGS})
-    _ensure_indexes(engine)
+    _ensure_indexes()
 
 
 def refresh_mv():
@@ -96,8 +88,6 @@ def refresh_mv():
                     is getting builded
             False:  The MV was refreshed using the normal (blocking) method.
     '''
-    # Get DB connection factory
-    engine = _get_engine()
 
     # Run transaction and create mv if it does not exist 
     with engine.begin() as conn:
@@ -138,30 +128,30 @@ def refresh_mv():
     return refreshed_concurrently
 
 
-def _estimate_avg_per_user(engine: Engine) -> float:
-    """
-    Estimate avg ratings per eligible user. Cheap and good enough.
-    """
-    q = text(f"""
-        SELECT AVG(cnt)::float AS avg_cnt
-        FROM (
-          SELECT COUNT(*) AS cnt
-          FROM ratings
-          WHERE "userId" IN (SELECT "userId" FROM {MV_NAME})
-          GROUP BY "userId"
-        ) t;
-    """)
-    try:
-        with engine.connect() as conn:
-            df = pd.read_sql_query(q, conn)
-        val = df.iloc[0]["avg_cnt"]
-        return float(val) if val is not None else ASSUMED_AVG_PER_USER
-    except Exception:
-        return ASSUMED_AVG_PER_USER
+# def _estimate_avg_per_user() -> float:
+#     """
+#     Estimate avg ratings per eligible user. Cheap and good enough.
+#     """
+#     q = text(f"""
+#         SELECT AVG(cnt)::float AS avg_cnt
+#         FROM (
+#           SELECT COUNT(*) AS cnt
+#           FROM ratings
+#           WHERE "userId" IN (SELECT "userId" FROM {MV_NAME})
+#           GROUP BY "userId"
+#         ) t;
+#     """)
+#     try:
+#         with engine.connect() as conn:
+#             df = pd.read_sql_query(q, conn)
+#         val = df.iloc[0]["avg_cnt"]
+#         return float(val) if val is not None else ASSUMED_AVG_PER_USER
+#     except Exception:
+#         return ASSUMED_AVG_PER_USER
 
 
 
-def _load_full_histories_for_n_users(engine, n_users_target: int) -> pd.DataFrame:
+def _load_full_histories_for_n_users(n_users_target: int) -> pd.DataFrame:
     """
     Sample EXACTLY 'n_users_target' random eligible users (>=6 ratings) and return ALL of their ratings.
     """
@@ -204,33 +194,33 @@ def _load_full_histories_for_n_users(engine, n_users_target: int) -> pd.DataFram
 
 
 
-def _sample_full_histories(engine: Engine, n_rows_target: int) -> pd.DataFrame:
-    """
-    Sample K random eligible users and fetch ALL their ratings.
-    Targets ~n_rows_target rows overall (not exact, because full histories vary).
-    """
-    avg_cnt = _estimate_avg_per_user(engine)
-    k_users = max(1, ceil((n_rows_target / max(1.0, avg_cnt)) * RANDOM_OVERSAMPLE)) if n_rows_target > 0 else 500
+# def _sample_full_histories(n_rows_target: int) -> pd.DataFrame:
+#     """
+#     Sample K random eligible users and fetch ALL their ratings.
+#     Targets ~n_rows_target rows overall (not exact, because full histories vary).
+#     """
+#     avg_cnt = _estimate_avg_per_user(engine)
+#     k_users = max(1, ceil((n_rows_target / max(1.0, avg_cnt)) * RANDOM_OVERSAMPLE)) if n_rows_target > 0 else 500
 
-    sql = text(f"""
-        WITH sample_users AS (
-          SELECT "userId"
-          FROM {MV_NAME}
-          ORDER BY RANDOM()     -- new sample each run
-          LIMIT :k_users
-        )
-        SELECT r."userId", r."movieId", r.rating, r."timestamp"
-        FROM ratings r
-        JOIN sample_users su USING ("userId");
-    """)
+#     sql = text(f"""
+#         WITH sample_users AS (
+#           SELECT "userId"
+#           FROM {MV_NAME}
+#           ORDER BY RANDOM()     -- new sample each run
+#           LIMIT :k_users
+#         )
+#         SELECT r."userId", r."movieId", r.rating, r."timestamp"
+#         FROM ratings r
+#         JOIN sample_users su USING ("userId");
+#     """)
 
-    with engine.connect() as conn:
-        df = pd.read_sql_query(sql, conn, params={"k_users": k_users})
+#     with engine.connect() as conn:
+#         df = pd.read_sql_query(sql, conn, params={"k_users": k_users})
 
-    # If we undershoot badly (rare), bump K once
-    if n_rows_target > 0 and len(df) < int(TARGET_FLOOR_RATIO * n_rows_target):
-        k_users = int(ceil(k_users * UNDERSHOOT_RETRY_FACTOR))
-        with engine.connect() as conn:
-            df = pd.read_sql_query(sql, conn, params={"k_users": k_users})
+#     # If we undershoot badly (rare), bump K once
+#     if n_rows_target > 0 and len(df) < int(TARGET_FLOOR_RATIO * n_rows_target):
+#         k_users = int(ceil(k_users * UNDERSHOOT_RETRY_FACTOR))
+#         with engine.connect() as conn:
+#             df = pd.read_sql_query(sql, conn, params={"k_users": k_users})
 
-    return df
+#     return df
