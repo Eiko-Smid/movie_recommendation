@@ -8,7 +8,7 @@ from math import ceil
 from fastapi import HTTPException, status
 import pandas as pd
 
-from src.data.database_session import engine
+from src.db.database_session import engine
 
 
 # Database settings

@@ -22,3 +22,4 @@ engine = create_engine(get_db_url(), pool_pre_ping=True)
 
 # Create Session factory
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+

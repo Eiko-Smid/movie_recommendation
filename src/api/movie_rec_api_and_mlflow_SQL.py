@@ -65,8 +65,8 @@ from src.models.als_movie_rec import (
 )
 
 # Import sql request code
-from src.data.database_session import engine
-from src.data.db_requests import (
+from src.db.database_session import engine
+from src.db.db_requests import (
     _create_mv_if_missing,
     _load_full_histories_for_n_users,
     refresh_mv
