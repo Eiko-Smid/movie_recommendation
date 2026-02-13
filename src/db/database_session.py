@@ -1,6 +1,6 @@
 import os 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 from dotenv import load_dotenv 
 
 from fastapi import HTTPException, status
@@ -22,4 +22,20 @@ engine = create_engine(get_db_url(), pool_pre_ping=True)
 
 # Create Session factory
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
+# Base class for models
+class Base(DeclarativeBase):
+    pass
+
+
+def get_db():
+    # Create  DB session
+    db = SessionLocal()
+    try:
+        # Return session
+        yield db
+    finally:
+        # Close session on second call
+        db.close()
 

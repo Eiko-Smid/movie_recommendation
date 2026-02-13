@@ -11,7 +11,6 @@ from pathlib import Path
 import tempfile
 
 from sqlalchemy import text
-# from sqlalchemy.engine import Engine
 
 from dotenv import load_dotenv 
 
@@ -37,7 +36,6 @@ import zlib
 
 import mlflow
 from mlflow import MlflowClient
-# from mlflow.tracking import MlflowClient
 import joblib
 from mlflow.pyfunc import PythonModel
 
@@ -72,10 +70,14 @@ from src.db.db_requests import (
     refresh_mv
 )
 
+from src.api.security import init_authorization
+from src.api.routers import auth, admin
+
 
 # _________________________________________________________________________________________________________
 # Global settings
 # _________________________________________________________________________________________________________
+
 CHAMP_STORE_DIR = Path("champ_store")
 CHAMP_STORE_DIR.mkdir(parents=True, exist_ok=True)
 CHAMPION_TRAIN_CSR_PATH = CHAMP_STORE_DIR / "champion_train_csr.npz"
@@ -915,7 +917,11 @@ async def lifespan(app: FastAPI):
     Ensures that the champ model and the corresponding train_csr matrix get's loaded
     when the API starts. 
     """
-    TRAIN_CSR_STORE.load()                          # same logic as before
+    # Init the authorization
+    init_authorization()
+        
+    # Load trained csr matrix
+    TRAIN_CSR_STORE.load()                          
     print("[champ-store] CSR loaded at startup")
 
     # Load global champ model
@@ -939,6 +945,11 @@ app = FastAPI(
     description="Movie recommendation system for training recommender model and make recommendation for users.",
     lifespan=lifespan
 )
+
+# Include router endpoints
+app.include_router(auth.router)
+app.include_router(admin.router)
+
 
 @app.get("/health", tags=["System"])
 def health_check():
