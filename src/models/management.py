@@ -1,4 +1,5 @@
 from typing import Dict, List, Tuple, Sequence, Optional, Any
+import logging
 from datetime import datetime
 from time import sleep
 from pathlib import Path
@@ -60,7 +61,7 @@ mlflow.set_experiment(EXPERIMENT)
 
 client = MlflowClient()
 
-
+logger = logging.getLogger(__name__)
 
 # _________________________________________________________________________________________________________
 # State holder
@@ -501,12 +502,13 @@ class ALSRecommenderPyFunc(PythonModel):
             - movie_titles: list[str]
         """
         rows: list[dict[str, Any]] = []
-
+        # Read input row by row
         for _, row in model_input.iterrows():
             user_id: int = int(row["user_id"])
             n_rec: int = int(row.get("n_movies_to_rec", 5))
             new_inter: Optional[list[int]] = row.get("new_user_interactions", None)
 
+            # Recommend an item for given user, n_rec's and user interactions (optional)
             rec_ids: list[int] = recommend_item(
                 als_model=self._state.model,
                 data_csr=TRAIN_CSR_STORE.get_csr_matrix(),
@@ -648,21 +650,36 @@ class TrainCSRStore:
         print(f"[champ-store] Saved champion train_csr to {self.path}")
 
 
-    def get_csr_matrix(self)-> Optional[csr_matrix]:
-        '''
-        Returns the csr matrix if already loaded, else None.
-        '''
+    def get_csr_matrix(self) -> Optional[csr_matrix]:
+        """
+        Returns the CSR matrix.
+
+        Behavior:
+        - If already loaded in memory -> return it.
+        - If not loaded -> try loading from disk.
+        - Log success or failure.
+        """
+
+        # Already in memory
         if self.csr is not None:
+            logger.debug("[champ-store] CSR already loaded in memory.")
             return self.csr
-        else:
-            try:
-                self.load()
-            except Exception as e:
-                raise RuntimeError(
-                f"[champ-store] Champion train_csr not available at {self.path}. "
-                f"Has a champion been saved yet?"
-            )
+
+        # Try loading
+        try:
+            self.load()
+
+            if self.csr is not None:
+                logger.info(f"[champ-store] CSR successfully loaded from {self.path}")
+            else:
+                logger.warning(f"[champ-store] CSR file not found at {self.path}")
+
+        except Exception:
+            logger.exception(f"[champ-store] Failed to load CSR from {self.path}")
             return None
+
+        return self.csr
+            
 
 
 def prepare_training(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, train_param: TrainRequest):
