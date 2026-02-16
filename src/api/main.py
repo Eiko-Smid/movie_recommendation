@@ -64,15 +64,18 @@ from src.models.als_movie_rec import (
 
 # Import sql request code
 from src.db.database_session import engine
-from src.db.db_requests import (
-    _create_mv_if_missing,
-    _load_full_histories_for_n_users,
-    refresh_mv
-)
 
 from src.api.security import init_authorization
-from src.api.routers import auth, admin
+from src.api.routers import auth, admin, train
 
+from src.api.schemas import (
+    TrainRequest,
+    TrainResponse,
+    RecommendRequest,
+    RecommendResponse,
+    BestParameters,
+    ALS_Parameter_Grid,
+)
 
 # _________________________________________________________________________________________________________
 # Global settings
@@ -152,67 +155,6 @@ client = MlflowClient()
 #             )
     
 #     return df_ratings, df_movies
-
-
-def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Creates a materialized view of all users which rated 'MIN_N_USER_RATINGS'or more movies,
-    if not already existing. 
-    Then requests the DB to get n_rows users which fulfil the condition. This ensures that we
-    only get meaningful users. 
-    Also requests the movies table (id, name, genres) from the db. 
-    Stores both requests in two separated df's and returns them.
-
-    Parameters
-    ----------
-    train_param:
-        Training configuration containing 'n_users'.
-            n_users > 0: Load all ratings from the n_users randomly
-            n_users = 0: Load ratings from 500 (default) users 
-            n_users < 0: Load all ratings, no mv filtered.
-
-    Returns
-    -------
-    df_ratings: pd.DataFrame
-        Data frame were each rows contains a pair of (userId, movieId, rating, timestamp)
-    df_movies: pd.DataFrame
-        Data frame were each rows contains a pair of (movieId, title, genres)
-
-    """
-    n_users = int(train_param.n_users)
-
-    try:
-        # Creates a materialized view -> table of all users ids > 5 movie ratings
-        _create_mv_if_missing()
-
-        # Use default value for zero case
-        if n_users == 0:
-            n_users = 500
-
-        with engine.connect() as conn:
-            if n_users < 0:
-                # Load full dataset without filtering                
-                df_ratings = pd.read_sql_query(
-                        'SELECT "userId", "movieId", rating, "timestamp" FROM ratings',
-                        conn,
-                    )
-            else:
-                # Load n_users 
-                df_ratings = _load_full_histories_for_n_users(n_users_target=n_users)
-            
-            # Load movies            
-            df_movies = pd.read_sql_query(
-                'SELECT "movieId", title, genres FROM movies', conn
-            )
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to load data from database: {e}"
-        )
-    
-    return df_ratings, df_movies
-
 
 
 def csr_fingerprint(X) -> str:
@@ -745,16 +687,6 @@ def _load_champion_params(model_name: str) -> dict | None:
 # _________________________________________________________________________________________________________
 # State holder
 # _________________________________________________________________________________________________________
-
-class BestParameters(BaseModel):
-    '''Class to store the best model parameters.'''
-    best_K1: int
-    best_B: float
-    best_factor: int
-    best_reg: float
-    best_iters: int
-
-
 @dataclass
 class Model_State:
     '''
@@ -821,89 +753,59 @@ TRAIN_CSR_STORE = TrainCSRStore(CHAMPION_TRAIN_CSR_PATH)
 # Fast API schemas
 # _________________________________________________________________________________________________________
 
-class ALS_Parameter_Grid(BaseModel):
-    '''
-    Defines the structure of the grid parameters used to train the model.
-    '''
-    bm25_K1_list: Sequence[int] = Field(
-        (100, 200),
-        description="BM25 K1 values for document length normalization"
-    )
-    bm25_B_list: Sequence[float] = Field(
-        (0.8, 1.0),
-        description="BM25 B values for length normalization"
-    )
-    factors_list: Sequence[int] = Field(
-        (128, 256),
-        description="Number of latent factors in ALS"
-    )
-    reg_list: Sequence[float] = Field(
-        (0.10, 0.20),
-        description="Regularization parameter"
-    )
-    iters_list: Sequence[int] = Field(
-        (25,),
-        description="Number of ALS iterations"
-    )
+# class ALS_Parameter_Grid(BaseModel):
+#     '''
+#     Defines the structure of the grid parameters used to train the model.
+#     '''
+#     bm25_K1_list: Sequence[int] = Field(
+#         (100, 200),
+#         description="BM25 K1 values for document length normalization"
+#     )
+#     bm25_B_list: Sequence[float] = Field(
+#         (0.8, 1.0),
+#         description="BM25 B values for length normalization"
+#     )
+#     factors_list: Sequence[int] = Field(
+#         (128, 256),
+#         description="Number of latent factors in ALS"
+#     )
+#     reg_list: Sequence[float] = Field(
+#         (0.10, 0.20),
+#         description="Regularization parameter"
+#     )
+#     iters_list: Sequence[int] = Field(
+#         (25,),
+#         description="Number of ALS iterations"
+#     )
 
 
-class TrainRequest(BaseModel):
-    """Input schema for the `/train` endpoint."""
-    n_users: int = Field(1000, description="Number of users to read (0 = full dataset)")
-    pos_threshold: float = Field(4.0, description="Threshold for positive rating")
+# class TrainRequest(BaseModel):
+#     """Input schema for the `/train` endpoint."""
+#     n_users: int = Field(1000, description="Number of users to read (0 = full dataset)")
+#     pos_threshold: float = Field(4.0, description="Threshold for positive rating")
 
-    als_parameter: ALS_Parameter_Grid = Field(
-        ...,
-        description=(
-            "Grid of ALS hyperparameters (factors, reg, iters, K1, B) "
-            "used for grid search."
-        ),
-    )
-    n_popular_movies: int = Field(100, description="Number of popular movies for cold start functionality")
+#     als_parameter: ALS_Parameter_Grid = Field(
+#         ...,
+#         description=(
+#             "Grid of ALS hyperparameters (factors, reg, iters, K1, B) "
+#             "used for grid search."
+#         ),
+#     )
+#     n_popular_movies: int = Field(100, description="Number of popular movies for cold start functionality")
     
 
-class TrainResponse(BaseModel):
-    """Output schema for the `/train` endpoint."""
-    best_param: BestParameters = Field(
-        None,
-        description="Best ALS hyperparameter combination found during training."
-    )
-    best_metrics: ALS_Metrics = Field(
-        None,
-        description="Metrics (precision@K, MAP@K) for the best parameter set."
-    )
+# class TrainResponse(BaseModel):
+#     """Output schema for the `/train` endpoint."""
+#     best_param: BestParameters = Field(
+#         None,
+#         description="Best ALS hyperparameter combination found during training."
+#     )
+#     best_metrics: ALS_Metrics = Field(
+#         None,
+#         description="Metrics (precision@K, MAP@K) for the best parameter set."
+#     )
 
 
-class RecommendRequest(BaseModel):
-    """Input schema for the `/recommend` endpoint."""
-    user_id: int = Field(
-        ...,
-        description="ID of the user for whom to generate recommendations.",
-        example=42,
-    )
-    n_movies_to_rec: int = Field(
-        5,
-        gt=0,
-        le=100,
-        description="Number of movie recommendations to return (1–100).",
-        example=10,
-    )
-    new_user_interactions: Optional[List[int]] = Field(
-        None,
-        description=(
-            "Optional list of movie IDs recently watched or liked by the user. "
-            "Used for cold-start or fold-in recommendations."
-        ),
-        example=[296, 318, 593],
-    )
-
-
-class RecommendResponse(BaseModel):
-    """Output schema for the `/recommend` endpoint."""
-    user_id: int = Field(..., description="User ID for which recommendations were generated.")
-    movie_ids: List[int] = Field(..., description="List of recommended movie IDs sorted by relevance.")
-    movie_titles: List[str] = Field(..., description="List of corresponding movie titles.")
-    movie_genres: List[str] = Field(..., description="List of corresponding movie genres.")
 
 
 # _________________________________________________________________________________________________________
@@ -949,6 +851,7 @@ app = FastAPI(
 # Include router endpoints
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(train.router)
 
 
 @app.get("/health", tags=["System"])
@@ -1023,144 +926,127 @@ async def unhandled_exception_handler(_: Request, exc: Exception):
         content={"detail": "Internal server error while training the model."},
     )
 
-@app.post(
-        "/refresh-mv",
-        summary="Refreshes the Materialized View (all users > 5 ratings)",
-        description=(
-        "When called the materialized view inside the data base gets refreshed."
-        "This is needed such that the api train endpoint has access to the newest"
-        "data which lives inside the materialized view."
-        "The endpoint should get called to frequently, once a day before training"
-        "is enough."
-    ),
-    response_description="Status (ok if it worked). and the way the mv was refreshed." \
-    "Either concurrently (new mv gets created while old one still useable -> parallel) "
-    "or not concurrently (new mv gets created while old one still not useable)."
-)
-def refresh_mv_endpoint():
-    refreshed_concurrently = refresh_mv()
-    return {"status": "ok", "concurrent": refreshed_concurrently}
 
 
-@app.post(
-        "/train",
-        response_model=TrainResponse,
-        summary="Train or update the ALS recommendation model",
-        description=(
-        "Loads ratings + movies, prepares CSR matrices, runs a 3-stage advanced grid "
-        "search to maximize MAP@K, compares the challenger to the current Champion, "
-        "logs everything to MLflow, and updates the Champion if improved."
-    ),
-    response_description="Best hyperparameters and metrics found during training."
-)
-def train_endpoint(train_param: TrainRequest):
-    '''
-    Trains or updates the ALS recommendation model using the provided training parameters.
+# @app.post(
+#         "/train",
+#         response_model=TrainResponse,
+#         summary="Train or update the ALS recommendation model",
+#         description=(
+#         "Loads ratings + movies, prepares CSR matrices, runs a 3-stage advanced grid "
+#         "search to maximize MAP@K, compares the challenger to the current Champion, "
+#         "logs everything to MLflow, and updates the Champion if improved."
+#     ),
+#     response_description="Best hyperparameters and metrics found during training."
+# )
+# def train_endpoint(train_param: TrainRequest):
+#     '''
+#     Trains or updates the ALS recommendation model using the provided training parameters.
 
-    The endpoint:
-      1. Loads and prepares the movie rating data.
-      2. Performs a three-stage grid search (`grid_search_advanced`) to find the best
-         challanegr model
-      3. Compares the new model against the current Champion model (if it exists).
-      4. Logs all parameters, metrics, and artifacts to MLflow.
-      5. Updates the current champion model. After every update the production model
-         gets updated automatically as well.
+#     The endpoint:
+#       1. Loads and prepares the movie rating data.
+#       2. Performs a three-stage grid search (`grid_search_advanced`) to find the best
+#          challanegr model
+#       3. Compares the new model against the current Champion model (if it exists).
+#       4. Logs all parameters, metrics, and artifacts to MLflow.
+#       5. Updates the current champion model. After every update the production model
+#          gets updated automatically as well.
 
-    Parameters
-    ----------
-    train_param : TrainRequest
-        Request body containing the ALS and preprocessing parameters such as BM25 settings,
-        ALS hyperparameters, and dataset options.
+#     Parameters
+#     ----------
+#     train_param : TrainRequest
+#         Request body containing the ALS and preprocessing parameters such as BM25 settings,
+#         ALS hyperparameters, and dataset options.
 
-    Returns
-    -------
-    TrainResponse
-        Object containing the best hyperparameters 'best_param' and corresponding evaluation
-        metrics 'best_metrics' from the training run.
-    '''
-    # Load data
-    df_ratings, df_movies = _load_data(train_param=train_param)
+#     Returns
+#     -------
+#     TrainResponse
+#         Object containing the best hyperparameters 'best_param' and corresponding evaluation
+#         metrics 'best_metrics' from the training run.
+#     '''
+#     # Load data
+#     df_ratings, df_movies = _load_data(train_param=train_param)
 
-    # Prepare training 
-    (
-    df_ratings,
-    train_csr,
-    test_csr,
-    test_csr_masked,
-    mappings,
-    movie_id_dict,
-    popular_item_ids,
-    ) = prepare_training(
-        df_ratings,
-        df_movies,
-        train_param,
-    )
+#     # Prepare training 
+#     (
+#     df_ratings,
+#     train_csr,
+#     test_csr,
+#     test_csr_masked,
+#     mappings,
+#     movie_id_dict,
+#     popular_item_ids,
+#     ) = prepare_training(
+#         df_ratings,
+#         df_movies,
+#         train_param,
+#     )
 
-    # Train model
-    # Grid search
-    model, metrics_ls, parameter_ls, best_idx, used_params = grid_search_advanced(
-        train_csr=train_csr,
-        test_csr=test_csr_masked,
-        bm25_K1_list=train_param.als_parameter.bm25_K1_list,
-        bm25_B_list=train_param.als_parameter.bm25_B_list,
-        factors_list=train_param.als_parameter.factors_list,
-        reg_list=train_param.als_parameter.reg_list,
-        iters_list=train_param.als_parameter.iters_list,
-        n_samples=12
-    )
+#     # Train model
+#     # Grid search
+#     model, metrics_ls, parameter_ls, best_idx, used_params = grid_search_advanced(
+#         train_csr=train_csr,
+#         test_csr=test_csr_masked,
+#         bm25_K1_list=train_param.als_parameter.bm25_K1_list,
+#         bm25_B_list=train_param.als_parameter.bm25_B_list,
+#         factors_list=train_param.als_parameter.factors_list,
+#         reg_list=train_param.als_parameter.reg_list,
+#         iters_list=train_param.als_parameter.iters_list,
+#         n_samples=12
+#     )
 
-    # Extract best parameters & metrics
-    best_param = BestParameters(
-        best_K1=parameter_ls[best_idx]["bm25_K1"],
-        best_B=parameter_ls[best_idx]["bm25_B"],
-        best_factor=parameter_ls[best_idx]["factors"],
-        best_reg=parameter_ls[best_idx]["reg"],
-        best_iters=parameter_ls[best_idx]["iters"],
-    )
-    best_metrics = metrics_ls[best_idx]
+#     # Extract best parameters & metrics
+#     best_param = BestParameters(
+#         best_K1=parameter_ls[best_idx]["bm25_K1"],
+#         best_B=parameter_ls[best_idx]["bm25_B"],
+#         best_factor=parameter_ls[best_idx]["factors"],
+#         best_reg=parameter_ls[best_idx]["reg"],
+#         best_iters=parameter_ls[best_idx]["iters"],
+#     )
+#     best_metrics = metrics_ls[best_idx]
     
-    # Check if model has improved compared to current champ model
-    improved, champ_model, champ_metrics, champ_params = did_model_improve(
-        train_csr=train_csr,
-        test_csr=test_csr_masked,
-        best_metrics=best_metrics
-    )
+#     # Check if model has improved compared to current champ model
+#     improved, champ_model, champ_metrics, champ_params = did_model_improve(
+#         train_csr=train_csr,
+#         test_csr=test_csr_masked,
+#         best_metrics=best_metrics
+#     )
 
-    # Log param. metrics, models
-    if not improved and champ_model is not None:
-        new_version, best_weighted_csr = mlflow_log_run(
-            train_param=train_param,
-            model=champ_model,
-            used_grid_param=used_params,
-            mappings=mappings,
-            best_param=champ_params,
-            best_metrics=champ_metrics,
-            train_csr=train_csr,
-            popular_item_ids=popular_item_ids,
-            movie_id_dict=movie_id_dict
-        )
-    # Simply store new model if old champ not won or not available
-    else:
-       new_version, best_weighted_csr = mlflow_log_run(
-            train_param=train_param,
-            model=model,
-            used_grid_param=used_params,
-            mappings=mappings,
-            best_param=best_param,
-            best_metrics=best_metrics,
-            train_csr=train_csr,
-            popular_item_ids=popular_item_ids,
-            movie_id_dict=movie_id_dict
-        )         
+#     # Log param. metrics, models
+#     if not improved and champ_model is not None:
+#         new_version, best_weighted_csr = mlflow_log_run(
+#             train_param=train_param,
+#             model=champ_model,
+#             used_grid_param=used_params,
+#             mappings=mappings,
+#             best_param=champ_params,
+#             best_metrics=champ_metrics,
+#             train_csr=train_csr,
+#             popular_item_ids=popular_item_ids,
+#             movie_id_dict=movie_id_dict
+#         )
+#     # Simply store new model if old champ not won or not available
+#     else:
+#        new_version, best_weighted_csr = mlflow_log_run(
+#             train_param=train_param,
+#             model=model,
+#             used_grid_param=used_params,
+#             mappings=mappings,
+#             best_param=best_param,
+#             best_metrics=best_metrics,
+#             train_csr=train_csr,
+#             popular_item_ids=popular_item_ids,
+#             movie_id_dict=movie_id_dict
+#         )         
     
-    # Updates the champ model functionality if new model is better than old champ model.
-    update_champ_model(
-        new_version=new_version,
-        best_weighted_csr=best_weighted_csr
-    )
+#     # Updates the champ model functionality if new model is better than old champ model.
+#     update_champ_model(
+#         new_version=new_version,
+#         best_weighted_csr=best_weighted_csr
+#     )
 
-    # Return train response
-    return TrainResponse(best_param=best_param, best_metrics=metrics_ls[best_idx])
+#     # Return train response
+#     return TrainResponse(best_param=best_param, best_metrics=metrics_ls[best_idx])
 
 
 
