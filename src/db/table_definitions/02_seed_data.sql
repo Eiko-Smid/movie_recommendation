@@ -14,3 +14,7 @@ WITH (FORMAT csv, HEADER true, DELIMITER ',', QUOTE '"');
 
 SELECT COUNT(*) FROM "movies";
 SELECT COUNT(*) FROM "ratings";
+
+INSERT INTO app_meta(key, value)
+VALUES ('seed_done', 'true')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

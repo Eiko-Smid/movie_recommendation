@@ -1,81 +1,47 @@
-from __future__ import annotations
-import logging
-import os, requests
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-# os.environ["OMP_NUM_THREADS"] = "1"
-# os.environ["MKL_NUM_THREADS"] = "1"
-# os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-# os.environ["NUMEXPR_NUM_THREADS"] = "1"
-
+from typing import Dict, List, Tuple, Sequence, Optional, Any
+from datetime import datetime
+from time import sleep
 from pathlib import Path
+import os
 import tempfile
 
-from sqlalchemy import text
-# from sqlalchemy.engine import Engine
+from fastapi import FastAPI, Request, HTTPException, status
 
-from dotenv import load_dotenv 
-
-from fastapi import FastAPI, HTTPException, status, Query, Request, APIRouter
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, ValidationError
-from fastapi.requests import Request
-from contextlib import asynccontextmanager
-
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional, Sequence, Tuple, Mapping, Iterable, Any, TypedDict, Callable
-
-from datetime import datetime
-
-from math import ceil
-import numpy as np
 import pandas as pd
-
+from scipy.sparse import csr_matrix, load_npz, save_npz
 import json
-import hashlib
-import platform
-import zlib
+from dataclasses import dataclass, asdict
 
 import mlflow
 from mlflow import MlflowClient
-# from mlflow.tracking import MlflowClient
-import joblib
 from mlflow.pyfunc import PythonModel
+import joblib
 
-from scipy.sparse import coo_matrix, csr_matrix, save_npz, load_npz
-from implicit.als import AlternatingLeastSquares
 from implicit.nearest_neighbours import bm25_weight
+from implicit.als import AlternatingLeastSquares
 
-from time import time, sleep
-
-import random
-
-# Import ALS recommend functionality
 from src.models.als_movie_rec import (
     Mappings,
-    ALS_Metrics,
-    prepare_data,
     build_movie_id_dict,
+    prepare_data,
     get_popular_items,
+    ALS_Metrics,
     als_grid_search,
     recommend_item,
-    get_movie_names,
     get_movie_metadata,
-    evaluate_als,
-    grid_search_advanced
 )
 
-# Import sql request code
-from src.data.db_requests import (
-    _get_engine,
-    _create_mv_if_missing,
-    _load_full_histories_for_n_users,
-    refresh_mv
+from src.api.schemas import (
+    TrainRequest,
+    BestParameters
 )
+
 
 
 # _________________________________________________________________________________________________________
 # Global settings
 # _________________________________________________________________________________________________________
+
 CHAMP_STORE_DIR = Path("champ_store")
 CHAMP_STORE_DIR.mkdir(parents=True, exist_ok=True)
 CHAMPION_TRAIN_CSR_PATH = CHAMP_STORE_DIR / "champion_train_csr.npz"
@@ -90,135 +56,42 @@ USE_ALIASES = True  # True = prefer aliases (Champion). False = use stages (Prod
 mlflow.set_tracking_uri(TRACKING_URI)
 mlflow.set_experiment(EXPERIMENT)
 
-CHAMP_MODEL: Optional[mlflow.pyfunc.PyFuncModel] = None
+# CHAMP_MODEL: Optional[mlflow.pyfunc.PyFuncModel] = None
 
 client = MlflowClient()
 
 
 
 # _________________________________________________________________________________________________________
-# Helper functions and classes 
+# State holder
 # _________________________________________________________________________________________________________
 
-# def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
-#     ''' 
-#     Loads the ratings and movies CSV files into Pandas DataFrames.
-
-#     This function is called at the beginning of the /train endpoint to load
-#     the MovieLens ratings and movie metadata. It verifies that the files exist
-#     and handles limited row loading based on the value of train_param.n_rows.
-
-#     Parameters
-#     ----------
-#     train_param: TrainRequest
-    # Training configuration containing 'n_users'.
-
-#     Returns
-#     -------
-#     df_ratings: pd.DataFrame
-#         Data frame were each rows contains a pair of (userId, movieId, rating, timestamp)
-#     df_movies: pd.DataFrame
-#         Data frame were each rows contains a pair of (movieId, title, genres)
-#     '''
-#     # Define file paths
-#     data_path_ratings = "data/ml-20m/ratings.csv"
-#     data_path_movies = "data/ml-20m/movies.csv"
-
-#     # Load data
-#     n_rows = train_param.n_rows
-#     # Check for existing paths
-#     if not os.path.exists(data_path_ratings):
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail=f"Ratings csv file not found. Path is:\n{data_path_ratings}"
-#         )
-
-#     if not os.path.exists(data_path_movies):
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail=f"Movies csv file not found. Path is:\n{data_path_movies}"
-#         )
-    
-#     # Try to load data
-#     try:
-#         df_ratings = pd.read_csv(data_path_ratings, nrows= n_rows if n_rows > 0 else None)
-#         df_movies = pd.read_csv(data_path_movies)
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail=f"Failed to read CSVs: {e}"
-#             )
-    
-#     return df_ratings, df_movies
+@dataclass
+class Model_State:
+    '''
+    Holds the model state and everything needed to make recommendations with the champ model.
+    '''
+    model: AlternatingLeastSquares
+    mappings: Mappings
+    popular_item_ids: list[int]
+    movie_id_dict: dict[int, str]
 
 
-def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Creates a materialized view of all users which rated 'MIN_N_USER_RATINGS'or more movies,
-    if not already existing. 
-    Then requests the DB to get n_rows users which fulfil the condition. This ensures that we
-    only get meaningful users. 
-    Also requests the movies table (id, name, genres) from the db. 
-    Stores both requests in two separated df's and returns them.
+# _________________________________________________________________________________________________________
+# MLFLow helpers
+# _________________________________________________________________________________________________________
 
-    Parameters
-    ----------
-    train_param:
-        Training configuration containing 'n_users'.
-            n_users > 0: Load all ratings from the n_users randomly
-            n_users = 0: Load ratings from 500 (default) users 
-            n_users < 0: Load all ratings, no mv filtered.
-
-    Returns
-    -------
-    df_ratings: pd.DataFrame
-        Data frame were each rows contains a pair of (userId, movieId, rating, timestamp)
-    df_movies: pd.DataFrame
-        Data frame were each rows contains a pair of (movieId, title, genres)
-
-    """
-    engine = _get_engine()
-    n_users = int(train_param.n_users)
-
-    try:
-        # Creates a materialized view -> table of all users ids > 5 movie ratings
-        _create_mv_if_missing(engine)
-
-        # Use default value for zero case
-        if n_users == 0:
-            n_users = 500
-
-        with engine.connect() as conn:
-            if n_users < 0:
-                # Load full dataset without filtering                
-                df_ratings = pd.read_sql_query(
-                        'SELECT "userId", "movieId", rating, "timestamp" FROM ratings',
-                        conn,
-                    )
-            else:
-                # Load n_users 
-                df_ratings = _load_full_histories_for_n_users(engine, n_users_target=n_users)
-            
-            # Load movies            
-            df_movies = pd.read_sql_query(
-                'SELECT "movieId", title, genres FROM movies', conn
-            )
-
-    except Exception as e:
+def get_champion_model(request: Request):
+    '''
+    Reads the current champion model from the api app.state.
+    '''
+    model = getattr(request.app.state, "champion_model", None)
+    if model is None:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to load data from database: {e}"
-        )
-    
-    return df_ratings, df_movies
-
-
-
-def csr_fingerprint(X) -> str:
-    h = 0
-    for arr in (X.indptr, X.indices, X.data):
-        h = zlib.crc32(arr.view(np.uint8), h)
-    return f"{h & 0xffffffff:08x}"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Model not ready (no Champion model found). Train a model first.",
+        )    
+    return model
 
 
 def prepare_training(
@@ -299,6 +172,7 @@ def prepare_training(
     print(f"\nShape of popular_item_ids is {len(popular_item_ids)}")
 
     return df_ratings, train_csr, test_csr, test_csr_masked, mappings, movie_id_dict, popular_item_ids
+
 
 
 def mlflow_log_run(
@@ -444,6 +318,7 @@ def mlflow_log_run(
     return new_version, best_weighted_csr
 
 
+
 def did_model_improve(
         train_csr: csr_matrix,
         test_csr: csr_matrix,
@@ -537,7 +412,9 @@ def did_model_improve(
     return improved, champ_model, champ_metrics, champ_params
 
 
+
 def update_champ_model(
+        app: FastAPI, 
         new_version: str,
         best_weighted_csr: csr_matrix
     ):
@@ -566,8 +443,7 @@ def update_champ_model(
     TRAIN_CSR_STORE.save(best_weighted_csr)
 
     # Load the new champ model
-    global CHAMP_MODEL
-    CHAMP_MODEL = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}@Champion")
+    app.state.champion_model = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}@Champion")
 
 
 class ALSRecommenderPyFunc(PythonModel):
@@ -741,29 +617,6 @@ def _load_champion_params(model_name: str) -> dict | None:
     return champ_params
 
 
-# _________________________________________________________________________________________________________
-# State holder
-# _________________________________________________________________________________________________________
-
-class BestParameters(BaseModel):
-    '''Class to store the best model parameters.'''
-    best_K1: int
-    best_B: float
-    best_factor: int
-    best_reg: float
-    best_iters: int
-
-
-@dataclass
-class Model_State:
-    '''
-    Holds the model state and everything needed to make recommendations with the champ model.
-    '''
-    model: AlternatingLeastSquares
-    mappings: Mappings
-    popular_item_ids: list[int]
-    movie_id_dict: dict[int, str]
-
 
 class TrainCSRStore:
     '''
@@ -812,403 +665,28 @@ class TrainCSRStore:
             return None
 
 
+def prepare_training(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, train_param: TrainRequest):
+    """Prepare train/test CSRs, mappings and popular items for training."""
+    train_csr, test_csr, test_csr_masked, mappings, evaluation_set = prepare_data(
+        df=df_ratings, pos_threshold=train_param.pos_threshold
+    )
+
+    movie_id_dict = build_movie_id_dict(df_movies)
+
+    popular_item_ids = get_popular_items(
+        df=df_ratings, top_n=train_param.n_popular_movies, threshold=train_param.pos_threshold
+    )
+
+    return (
+        df_ratings,
+        train_csr,
+        test_csr,
+        test_csr_masked,
+        mappings,
+        movie_id_dict,
+        popular_item_ids,
+    )
+
+
 # Init the csr matrix store obj
 TRAIN_CSR_STORE = TrainCSRStore(CHAMPION_TRAIN_CSR_PATH)
-
-
-# _________________________________________________________________________________________________________
-# Fast API schemas
-# _________________________________________________________________________________________________________
-
-class ALS_Parameter_Grid(BaseModel):
-    '''
-    Defines the structure of the grid parameters used to train the model.
-    '''
-    bm25_K1_list: Sequence[int] = Field(
-        (100, 200),
-        description="BM25 K1 values for document length normalization"
-    )
-    bm25_B_list: Sequence[float] = Field(
-        (0.8, 1.0),
-        description="BM25 B values for length normalization"
-    )
-    factors_list: Sequence[int] = Field(
-        (128, 256),
-        description="Number of latent factors in ALS"
-    )
-    reg_list: Sequence[float] = Field(
-        (0.10, 0.20),
-        description="Regularization parameter"
-    )
-    iters_list: Sequence[int] = Field(
-        (25,),
-        description="Number of ALS iterations"
-    )
-
-
-class TrainRequest(BaseModel):
-    """Input schema for the `/train` endpoint."""
-    n_users: int = Field(1000, description="Number of users to read (0 = full dataset)")
-    pos_threshold: float = Field(4.0, description="Threshold for positive rating")
-
-    als_parameter: ALS_Parameter_Grid = Field(
-        ...,
-        description=(
-            "Grid of ALS hyperparameters (factors, reg, iters, K1, B) "
-            "used for grid search."
-        ),
-    )
-    n_popular_movies: int = Field(100, description="Number of popular movies for cold start functionality")
-    
-
-class TrainResponse(BaseModel):
-    """Output schema for the `/train` endpoint."""
-    best_param: BestParameters = Field(
-        None,
-        description="Best ALS hyperparameter combination found during training."
-    )
-    best_metrics: ALS_Metrics = Field(
-        None,
-        description="Metrics (precision@K, MAP@K) for the best parameter set."
-    )
-
-
-class RecommendRequest(BaseModel):
-    """Input schema for the `/recommend` endpoint."""
-    user_id: int = Field(
-        ...,
-        description="ID of the user for whom to generate recommendations.",
-        example=42,
-    )
-    n_movies_to_rec: int = Field(
-        5,
-        gt=0,
-        le=100,
-        description="Number of movie recommendations to return (1–100).",
-        example=10,
-    )
-    new_user_interactions: Optional[List[int]] = Field(
-        None,
-        description=(
-            "Optional list of movie IDs recently watched or liked by the user. "
-            "Used for cold-start or fold-in recommendations."
-        ),
-        example=[296, 318, 593],
-    )
-
-
-class RecommendResponse(BaseModel):
-    """Output schema for the `/recommend` endpoint."""
-    user_id: int = Field(..., description="User ID for which recommendations were generated.")
-    movie_ids: List[int] = Field(..., description="List of recommended movie IDs sorted by relevance.")
-    movie_titles: List[str] = Field(..., description="List of corresponding movie titles.")
-    movie_genres: List[str] = Field(..., description="List of corresponding movie genres.")
-
-
-# _________________________________________________________________________________________________________
-# API Endpoints
-# _________________________________________________________________________________________________________
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Lifespan handler: runs once at startup and once at shutdown.
-    Ensures that the champ model and the corresponding train_csr matrix get's loaded
-    when the API starts. 
-    """
-    TRAIN_CSR_STORE.load()                          # same logic as before
-    print("[champ-store] CSR loaded at startup")
-
-    # Load global champ model
-    global CHAMP_MODEL
-    # Init it directly with None because loading the model takes time and it needs to be available 
-    # for the case that the Recommendation endpoint gets called.
-    CHAMP_MODEL = None
-    try:
-        CHAMP_MODEL = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}@Champion")
-    except Exception as e:
-        CHAMP_MODEL = None
-    
-    yield                                       # app runs while yielded
-    print("[champ-store] App shutting down")    # optional cleanup
-    # Optionally TRAIN_CSR_STORE.csr = None
-    # or save to disk if needed
-
-
-app = FastAPI(
-    title="Movie Recommendation API",
-    description="Movie recommendation system for training recommender model and make recommendation for users.",
-    lifespan=lifespan
-)
-
-@app.get("/health", tags=["System"])
-def health_check():
-    """
-    Lightweight healthcheck endpoint.
-    Verifies connectivity to both the database and MLflow server.
-    Returns 200 OK if both are reachable, else 500.
-    """
-    load_dotenv()
-    DB_URL = os.getenv('DB_URL')
-    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
-    if not DB_URL:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection URL not found in environment variables."
-        )
-    status_report = {"timestamp": datetime.utcnow().isoformat()}
-    
-    # ✅ Check database connectivity
-    if not DB_URL:
-        status_report["database"] = "missing DB_URL env var"
-    try:
-        engine = _get_engine()
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        status_report["database"] = "reachable"
-    except Exception as e:
-        status_report["database"] = f"unreachable ({str(e)})"
-
-    # ✅ Check MLflow connectivity
-    if not MLFLOW_TRACKING_URI:
-        status_report["mlflow"] = "missing MLFLOW_TRACKING_URI env var"
-    try:
-        mlflow_health_url = MLFLOW_TRACKING_URI.rstrip("/")
-        response = requests.get(mlflow_health_url, timeout=5)
-        if response.status_code == 200:
-            status_report["mlflow"] = "reachable"
-        else:
-            status_report["mlflow"] = f"error ({response.status_code})"
-    except Exception as e:
-        status_report["mlflow"] = f"unreachable ({str(e)})"
-
-    # ✅ Return aggregated report
-    if (
-        status_report.get("database") == "reachable"
-        and status_report.get("mlflow") == "reachable"
-    ):
-        return status_report
-    else:
-        raise HTTPException(status_code=500, detail=status_report)
-    
-
-@app.exception_handler(ValueError)
-async def value_error_handler(_: Request, exc: ValueError):
-    '''
-    Every time a value error occurs Fast API routes this error to this handler instead of crashing.
-    '''
-    # e.g., "No positives after binarization" from prepare_data
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"detail": str(exc)},
-    )
-
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(_: Request, exc: Exception):
-    '''
-    Catches any other exception that wasn’t explicitly handled and returns a 500 JSON response instead.
-    '''
-    logging.exception("Unhandled error in /train: %s", exc)
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal server error while training the model."},
-    )
-
-@app.post(
-        "/refresh-mv",
-        summary="Refreshes the Materialized View (all users > 5 ratings)",
-        description=(
-        "When called the materialized view inside the data base gets refreshed."
-        "This is needed such that the api train endpoint has access to the newest"
-        "data which lives inside the materialized view."
-        "The endpoint should get called to frequently, once a day before training"
-        "is enough."
-    ),
-    response_description="Status (ok if it worked). and the way the mv was refreshed." \
-    "Either concurrently (new mv gets created while old one still useable -> parallel) "
-    "or not concurrently (new mv gets created while old one still not useable)."
-)
-def refresh_mv_endpoint():
-    refreshed_concurrently = refresh_mv()
-    return {"status": "ok", "concurrent": refreshed_concurrently}
-
-
-@app.post(
-        "/train",
-        response_model=TrainResponse,
-        summary="Train or update the ALS recommendation model",
-        description=(
-        "Loads ratings + movies, prepares CSR matrices, runs a 3-stage advanced grid "
-        "search to maximize MAP@K, compares the challenger to the current Champion, "
-        "logs everything to MLflow, and updates the Champion if improved."
-    ),
-    response_description="Best hyperparameters and metrics found during training."
-)
-def train_endpoint(train_param: TrainRequest):
-    '''
-    Trains or updates the ALS recommendation model using the provided training parameters.
-
-    The endpoint:
-      1. Loads and prepares the movie rating data.
-      2. Performs a three-stage grid search (`grid_search_advanced`) to find the best
-         challanegr model
-      3. Compares the new model against the current Champion model (if it exists).
-      4. Logs all parameters, metrics, and artifacts to MLflow.
-      5. Updates the current champion model. After every update the production model
-         gets updated automatically as well.
-
-    Parameters
-    ----------
-    train_param : TrainRequest
-        Request body containing the ALS and preprocessing parameters such as BM25 settings,
-        ALS hyperparameters, and dataset options.
-
-    Returns
-    -------
-    TrainResponse
-        Object containing the best hyperparameters 'best_param' and corresponding evaluation
-        metrics 'best_metrics' from the training run.
-    '''
-    # Load data
-    df_ratings, df_movies = _load_data(train_param=train_param)
-
-    # Prepare training 
-    (
-    df_ratings,
-    train_csr,
-    test_csr,
-    test_csr_masked,
-    mappings,
-    movie_id_dict,
-    popular_item_ids,
-    ) = prepare_training(
-        df_ratings,
-        df_movies,
-        train_param,
-    )
-
-    # Train model
-    # Grid search
-    model, metrics_ls, parameter_ls, best_idx, used_params = grid_search_advanced(
-        train_csr=train_csr,
-        test_csr=test_csr_masked,
-        bm25_K1_list=train_param.als_parameter.bm25_K1_list,
-        bm25_B_list=train_param.als_parameter.bm25_B_list,
-        factors_list=train_param.als_parameter.factors_list,
-        reg_list=train_param.als_parameter.reg_list,
-        iters_list=train_param.als_parameter.iters_list,
-        n_samples=12
-    )
-
-    # Extract best parameters & metrics
-    best_param = BestParameters(
-        best_K1=parameter_ls[best_idx]["bm25_K1"],
-        best_B=parameter_ls[best_idx]["bm25_B"],
-        best_factor=parameter_ls[best_idx]["factors"],
-        best_reg=parameter_ls[best_idx]["reg"],
-        best_iters=parameter_ls[best_idx]["iters"],
-    )
-    best_metrics = metrics_ls[best_idx]
-    
-    # Check if model has improved compared to current champ model
-    improved, champ_model, champ_metrics, champ_params = did_model_improve(
-        train_csr=train_csr,
-        test_csr=test_csr_masked,
-        best_metrics=best_metrics
-    )
-
-    # Log param. metrics, models
-    if not improved and champ_model is not None:
-        new_version, best_weighted_csr = mlflow_log_run(
-            train_param=train_param,
-            model=champ_model,
-            used_grid_param=used_params,
-            mappings=mappings,
-            best_param=champ_params,
-            best_metrics=champ_metrics,
-            train_csr=train_csr,
-            popular_item_ids=popular_item_ids,
-            movie_id_dict=movie_id_dict
-        )
-    # Simply store new model if old champ not won or not available
-    else:
-       new_version, best_weighted_csr = mlflow_log_run(
-            train_param=train_param,
-            model=model,
-            used_grid_param=used_params,
-            mappings=mappings,
-            best_param=best_param,
-            best_metrics=best_metrics,
-            train_csr=train_csr,
-            popular_item_ids=popular_item_ids,
-            movie_id_dict=movie_id_dict
-        )         
-    
-    # Updates the champ model functionality if new model is better than old champ model.
-    update_champ_model(
-        new_version=new_version,
-        best_weighted_csr=best_weighted_csr
-    )
-
-    # Return train response
-    return TrainResponse(best_param=best_param, best_metrics=metrics_ls[best_idx])
-
-
-
-# Define recommendation endpoint
-@app.post(
-    "/recommend",
-    response_model=RecommendResponse,
-    summary="Get top-N movie recommendations for a user",
-    description=(
-        "Uses the in-memory Champion ALS model to recommend movies. "
-        "Handles cold-start via fold-in if `new_user_interactions` are provided; "
-        "otherwise falls back to popular items."
-    ),
-    response_description="Recommended movie IDs (and titles if available)."
-)
-def recommend_endpoint(recom_param: RecommendRequest):
-    '''
-    Generates a personalized movie recommendation if the given user is part of the matrix 
-    the current champ model was trained with. If thats not the case but some initial 
-    information about the users favorit movies are provided the recommendations are 
-    getting computed on the fly. 
-    If none of both is the case, the user get recommendations based of a list of popular 
-    movies.
-
-    Parameters
-    ----------
-    recom_param : RecommendRequest
-        Class including the user id, the number movies to recommend and a list of movies
-        the user likes. The list is for the case that the user id is not known.
-    Returns
-    -------
-    RecommendResponse
-        Endpoint returns the user_id, the ids of the recommended movies as well as the
-        movie names.
-    '''
-    # Check if Champ model exists, if not raise Exception
-    if CHAMP_MODEL is None:
-        raise HTTPException(status_code=503, detail="Champion model not loaded yet")
-    
-    # Put request into df (Specified by MLFLow that model_input needs to be df or numpy.ndarray)
-    df = pd.DataFrame([{
-        "user_id": recom_param.user_id,
-        "n_movies_to_rec": recom_param.n_movies_to_rec,
-        "new_user_interactions": recom_param.new_user_interactions or []
-    }])
-
-    # Predict -> Movie recommendations
-    df_movie_rec = CHAMP_MODEL.predict(df) 
-
-    # Extract df data
-    movie_ids = df_movie_rec.iloc[0]["movie_ids"]
-    movie_titles = df_movie_rec.iloc[0].get("movie_titles", None) or []
-    movie_genres = df_movie_rec.iloc[0].get("movie_genres", None) or []
-
-    return RecommendResponse(
-        user_id=recom_param.user_id,
-        movie_ids=movie_ids,
-        movie_titles=movie_titles,
-        movie_genres=movie_genres
-    )

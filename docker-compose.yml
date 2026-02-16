@@ -27,7 +27,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "psql -U $${POSTGRES_USER} -d $${POSTGRES_DB} -tAc \"SELECT 1 FROM app_meta WHERE key='seed_done' AND value='true';\" | grep -q 1"]
       interval: 5s
       timeout: 10s
       retries: 40
@@ -37,7 +37,7 @@ services:
       - pgdata:/var/lib/postgresql/data
 
       # Auto-init scripts (run only on first boot of a fresh volume)
-      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+      - ./src/db/table_definitions:/docker-entrypoint-initdb.d:ro
 
       # Mount CSVs into a known path the init scripts can access
       - ./data/ml-20m:/seed:ro
