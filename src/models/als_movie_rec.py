@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
+import logging
 
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Sequence, Tuple, Mapping, Iterable, Any, TypedDict, Union
@@ -18,6 +19,9 @@ import zlib
 from itertools import product
 
 import random
+
+# Init logger
+logger = logging.getLogger(__name__)
 
 # _________________________________________________________________________________________________________
 # Dataclasses
@@ -891,7 +895,7 @@ def recommend_item(
     first trys to compute new recommendation based on the new_user_interactions which
     is a list of movies he likes. 
     If this list is empty, then the user gets recommendations based on a list of popular
-    items. This solves the cold start problem.
+    items. This handles the cold start problem.
 
     Parameters
     ----------
@@ -926,6 +930,8 @@ def recommend_item(
         user_idx = mappings.user_id_to_index[user_id]
         user_row = data_csr[user_idx]
 
+        logger.info("[Recommend item] The user is part of the csr matrix.")
+
         # if user has interactions in FULL → fast path
         if user_row.nnz > 0:
             rec_items, rec_scores = als_model.recommend(
@@ -959,10 +965,12 @@ def recommend_item(
                 filter_already_liked_items=True,
                 recalculate_user=True
             )
+            logger.info("[Recommend item] User is unknown but has known interactions.")
             return map_items_back(rec_items)
     # Just return n elements from the list that contains popular movies if the new user hasn't rated any movies 
     # so far
     else:
+        logger.info("[Recommend item] No user info -> Popular movie list has been returned.")
         return popular_item_ids[:n_movies_to_rec]
 
     # Last resort: empty list (don’t crash pipeline)

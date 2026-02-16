@@ -1,14 +1,10 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Request
 from pydantic import BaseModel, Field
 from typing import Optional, Sequence, List, Dict, Tuple
 import pandas as pd
 
 from src.models.als_movie_rec import (
-    prepare_data,
-    build_movie_id_dict,
-    get_popular_items,
     grid_search_advanced,
-    ALS_Metrics,
 )
 from src.db.database_session import engine
 from src.db.db_requests import (
@@ -23,6 +19,67 @@ from src.api.schemas import (
     BestParameters,
 )
 
+from src.models.management import (
+    prepare_training,
+    did_model_improve,
+    mlflow_log_run,
+    update_champ_model
+)
+
+# _________________________________________________________________________________________________________
+# Data loading functionality 
+# _________________________________________________________________________________________________________
+
+# def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
+#     ''' 
+#     Loads the ratings and movies CSV files into Pandas DataFrames.
+
+#     This function is called at the beginning of the /train endpoint to load
+#     the MovieLens ratings and movie metadata. It verifies that the files exist
+#     and handles limited row loading based on the value of train_param.n_rows.
+
+#     Parameters
+#     ----------
+#     train_param: TrainRequest
+    # Training configuration containing 'n_users'.
+
+#     Returns
+#     -------
+#     df_ratings: pd.DataFrame
+#         Data frame were each rows contains a pair of (userId, movieId, rating, timestamp)
+#     df_movies: pd.DataFrame
+#         Data frame were each rows contains a pair of (movieId, title, genres)
+#     '''
+#     # Define file paths
+#     data_path_ratings = "data/ml-20m/ratings.csv"
+#     data_path_movies = "data/ml-20m/movies.csv"
+
+#     # Load data
+#     n_rows = train_param.n_rows
+#     # Check for existing paths
+#     if not os.path.exists(data_path_ratings):
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail=f"Ratings csv file not found. Path is:\n{data_path_ratings}"
+#         )
+
+#     if not os.path.exists(data_path_movies):
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail=f"Movies csv file not found. Path is:\n{data_path_movies}"
+#         )
+    
+#     # Try to load data
+#     try:
+#         df_ratings = pd.read_csv(data_path_ratings, nrows= n_rows if n_rows > 0 else None)
+#         df_movies = pd.read_csv(data_path_movies)
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail=f"Failed to read CSVs: {e}"
+#             )
+    
+#     return df_ratings, df_movies
 
 
 def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -51,28 +108,6 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
     return df_ratings, df_movies
 
-
-def prepare_training(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, train_param: TrainRequest):
-    """Prepare train/test CSRs, mappings and popular items for training."""
-    train_csr, test_csr, test_csr_masked, mappings, evaluation_set = prepare_data(
-        df=df_ratings, pos_threshold=train_param.pos_threshold
-    )
-
-    movie_id_dict = build_movie_id_dict(df_movies)
-
-    popular_item_ids = get_popular_items(
-        df=df_ratings, top_n=train_param.n_popular_movies, threshold=train_param.pos_threshold
-    )
-
-    return (
-        df_ratings,
-        train_csr,
-        test_csr,
-        test_csr_masked,
-        mappings,
-        movie_id_dict,
-        popular_item_ids,
-    )
 
 
 # _________________________________________________________________________________________________________
@@ -104,9 +139,11 @@ def refresh_mv_endpoint():
 @router.post(
         "/train_model",
         response_model=TrainResponse,
-        summary="Train or update the ALS model",
 )
-def train_endpoint(train_param: TrainRequest):
+def train_endpoint(
+    request: Request,
+    train_param: TrainRequest,
+):
     '''
     Trains or updates the ALS recommendation model using the provided training parameters.
 
@@ -131,20 +168,26 @@ def train_endpoint(train_param: TrainRequest):
         Object containing the best hyperparameters 'best_param' and corresponding evaluation
         metrics 'best_metrics' from the training run.
     '''
-    # Load & prepare
+    # Load data
     df_ratings, df_movies = _load_data(train_param=train_param)
 
+    # Prepare training 
     (
+    df_ratings,
+    train_csr,
+    test_csr,
+    test_csr_masked,
+    mappings,
+    movie_id_dict,
+    popular_item_ids,
+    ) = prepare_training(
         df_ratings,
-        train_csr,
-        test_csr,
-        test_csr_masked,
-        mappings,
-        movie_id_dict,
-        popular_item_ids,
-    ) = prepare_training(df_ratings, df_movies, train_param)
+        df_movies,
+        train_param,
+    )
 
-    # Grid search (delegates to model logic)
+    # Train model
+    # Grid search
     model, metrics_ls, parameter_ls, best_idx, used_params = grid_search_advanced(
         train_csr=train_csr,
         test_csr=test_csr_masked,
@@ -153,9 +196,10 @@ def train_endpoint(train_param: TrainRequest):
         factors_list=train_param.als_parameter.factors_list,
         reg_list=train_param.als_parameter.reg_list,
         iters_list=train_param.als_parameter.iters_list,
-        n_samples=12,
+        n_samples=12
     )
 
+    # Extract best parameters & metrics
     best_param = BestParameters(
         best_K1=parameter_ls[best_idx]["bm25_K1"],
         best_B=parameter_ls[best_idx]["bm25_B"],
@@ -164,12 +208,15 @@ def train_endpoint(train_param: TrainRequest):
         best_iters=parameter_ls[best_idx]["iters"],
     )
     best_metrics = metrics_ls[best_idx]
-
-    # Compare to champion and log
+    
+    # Check if model has improved compared to current champ model
     improved, champ_model, champ_metrics, champ_params = did_model_improve(
-        train_csr=train_csr, test_csr=test_csr_masked, best_metrics=best_metrics
+        train_csr=train_csr,
+        test_csr=test_csr_masked,
+        best_metrics=best_metrics
     )
 
+    # Log param. metrics, models
     if not improved and champ_model is not None:
         new_version, best_weighted_csr = mlflow_log_run(
             train_param=train_param,
@@ -180,10 +227,10 @@ def train_endpoint(train_param: TrainRequest):
             best_metrics=champ_metrics,
             train_csr=train_csr,
             popular_item_ids=popular_item_ids,
-            movie_id_dict=movie_id_dict,
+            movie_id_dict=movie_id_dict
         )
     else:
-        new_version, best_weighted_csr = mlflow_log_run(
+       new_version, best_weighted_csr = mlflow_log_run(
             train_param=train_param,
             model=model,
             used_grid_param=used_params,
@@ -192,11 +239,15 @@ def train_endpoint(train_param: TrainRequest):
             best_metrics=best_metrics,
             train_csr=train_csr,
             popular_item_ids=popular_item_ids,
-            movie_id_dict=movie_id_dict,
-        )
+            movie_id_dict=movie_id_dict
+        )         
+    
+    # Update the champ model
+    update_champ_model(
+        app=request.app,
+        new_version=new_version,
+        best_weighted_csr=best_weighted_csr
+    )
 
-    # Promote & update in-memory Champion
-    update_champ_model(new_version=new_version, best_weighted_csr=best_weighted_csr)
-
-    return TrainResponse(best_param=best_param, best_metrics=best_metrics)
-
+    # Return train response
+    return TrainResponse(best_param=best_param, best_metrics=metrics_ls[best_idx])
