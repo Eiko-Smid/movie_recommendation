@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, status, Request, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, Sequence, List, Dict, Tuple
 import pandas as pd
@@ -25,6 +25,10 @@ from src.models.management import (
     mlflow_log_run,
     update_champ_model
 )
+
+from src.db.users import User
+from src.api.security import check_user_authorization
+from src.api.role import UserRole
 
 # _________________________________________________________________________________________________________
 # Data loading functionality 
@@ -117,20 +121,16 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 router = APIRouter(prefix="/train", tags=["train"])
 
 @router.post(
-        "/refresh-mv",
-        summary="Refreshes the Materialized View (all users > 5 ratings)",
-        description=(
-        "When called the materialized view inside the data base gets refreshed."
-        "This is needed such that the api train endpoint has access to the newest"
-        "data which lives inside the materialized view."
-        "The endpoint should get called to frequently, once a day before training"
-        "is enough."
-    ),
-    response_description="Status (ok if it worked). and the way the mv was refreshed." \
-    "Either concurrently (new mv gets created while old one still useable -> parallel) "
-    "or not concurrently (new mv gets created while old one still not useable)."
+        "/refresh-mv"
 )
-def refresh_mv_endpoint():
+def refresh_mv_endpoint(
+    _: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER)),
+):
+    '''
+    Refreshes the Materialized View (all users > 5 ratings). This is needed such that the
+    api train endpoint has access to the newest data which lives inside the materialized view.
+    The endpoint should get called to frequently, once a day before training is enough.
+    '''
     refreshed_concurrently = refresh_mv()
     return {"status": "ok", "concurrent": refreshed_concurrently}
 
@@ -143,6 +143,7 @@ def refresh_mv_endpoint():
 def train_endpoint(
     request: Request,
     train_param: TrainRequest,
+    _: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
     '''
     Trains or updates the ALS recommendation model using the provided training parameters.
@@ -150,7 +151,7 @@ def train_endpoint(
     The endpoint:
       1. Loads and prepares the movie rating data.
       2. Performs a three-stage grid search (`grid_search_advanced`) to find the best
-         challanegr model
+         challenger model
       3. Compares the new model against the current Champion model (if it exists).
       4. Logs all parameters, metrics, and artifacts to MLflow.
       5. Updates the current champion model. After every update the production model

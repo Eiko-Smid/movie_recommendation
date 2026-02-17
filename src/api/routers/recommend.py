@@ -12,6 +12,10 @@ from src.models.management import (
     get_champion_model
 )
 
+from src.db.users import User
+from src.api.security import check_user_authorization
+from src.api.role import UserRole
+
 
 router = APIRouter(prefix="/recommend", tags=["recommend"])
 @router.post(
@@ -21,6 +25,7 @@ router = APIRouter(prefix="/recommend", tags=["recommend"])
 def recommend_endpoint(
     recom_param: RecommendRequest,
     champion_model = Depends(get_champion_model),
+    _: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.USER)),
 ):
     '''
     Generates a personalized movie recommendation if the given user is part of the matrix 
