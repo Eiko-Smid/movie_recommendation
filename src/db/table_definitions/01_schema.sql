@@ -53,7 +53,6 @@ CREATE TABLE IF NOT EXISTS app_meta(
     value TEXT NOT NULL
 );
 
-
 -- Helpful indexes
 CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings("userId");
 CREATE INDEX IF NOT EXISTS idx_ratings_movie ON ratings("movieId");

@@ -12,7 +12,7 @@ from src.db.database_session import engine
 
 
 # Database settings
-MV_NAME = "eligible_users"          # name of materialized view
+MV_NAME = "user_filter"          # name of materialized view
 MIN_N_USER_RATINGS = 6              # users must have >=MIN_N_USER_RATINGS ratings to be part of MV
 ASSUMED_AVG_PER_USER = 50.0         # rough avg ratings per eligible user (for sizing K)
 RANDOM_OVERSAMPLE = 1.10            # oversample users by ~10% to hit target size
@@ -22,6 +22,9 @@ AUTO_REFRESH_MV = False             # keep False to stay within +20% runtime bud
 
 
 def _mv_exists() -> bool:
+    '''
+    Checks if the materialized view of the filtered users already exists.
+    '''
     q = text("""
         SELECT 1
         FROM pg_matviews
@@ -34,121 +37,143 @@ def _mv_exists() -> bool:
     return res is not None
 
 
-
 def _ensure_indexes() -> None:
-    # Create helpful indexes (idempotent)
+    '''
+    Creates some useful indexes.
+    '''
     with engine.begin() as conn:
         conn.execute(text(f"""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_{MV_NAME}_userid
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_{MV_NAME}_userId
             ON {MV_NAME}("userId");
         """))
+        # Optional but useful
         conn.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_ratings_userid
             ON ratings("userId");
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_app_ratings_userid
+            ON app_ratings("userId");
+        """))
+        conn.execute(text("""
+            CREATE INDEX IF NOT EXISTS idx_app_ratings_movieid
+            ON app_ratings("movieId");
+        """))
+
+
+# def create_uv_all_ratings():
+#     '''
+#     Create unified rating view. 
+#     '''
+#     with engine.begin() as conn:
+#         conn.execute(text(f'''
+#             CREATE OR REPLACE VIEW all_ratings AS
+#             SELECT
+#                 ('ml_' || "userId"::text) AS user_key,
+#                 "movieId",
+#                 rating,
+#                 "timestamp"
+#             FROM ratings
+#             UNION ALL
+#             SELECT
+#                 ('app_' || "userId"::text) AS user_key,
+#                 "movieId",
+#                 rating,
+#                 "timestamp"
+#             FROM app_ratings;
+#         '''))
+
+
+def create_uv_all_ratings() -> None:
+    """
+    Create unified ratings view with integer "userId".
+    App users are shifted by (max MovieLens userId + 1).
+    """
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE OR REPLACE VIEW all_ratings AS
+            WITH max_index AS (
+                SELECT COALESCE(MAX("userId"), 0) + 1 AS offset
+                FROM ratings
+            )
+            SELECT
+                r."userId"::bigint AS "userId",
+                r."movieId",
+                r.rating,
+                r."timestamp"
+            FROM ratings r
+            UNION ALL
+            SELECT
+                (ar."userId"::bigint + m.offset) AS "userId",
+                ar."movieId",
+                ar.rating,
+                ar."timestamp"
+            FROM app_ratings ar
+            CROSS JOIN max_index m;
         """))
 
 
 def _create_mv_if_missing() -> None:
     if _mv_exists():
         return
+    
+    # Merge the ratings table with the registered user ratings (app_ratings) table.
+    create_uv_all_ratings()    
+
     # Create MV (run once; safe to call every time)
     # Use a TX for CREATE; REFRESH CONCURRENTLY can't be in a TX, so we do not refresh here.
     with engine.begin() as conn:
         conn.execute(text(f"""
             CREATE MATERIALIZED VIEW IF NOT EXISTS {MV_NAME} AS
             SELECT "userId"
-            FROM ratings
+            FROM all_ratings
             GROUP BY "userId"
             HAVING COUNT(*) >= :min_r;
         """), {"min_r": MIN_N_USER_RATINGS})
     _ensure_indexes()
 
 
-def refresh_mv():
-    '''
-    Creates or refreshes the materialized view (MV) that stores all users ids
-    who have rated 'MIN_N_USER_RATINGS' or more movies.
+def refresh_mv() -> bool:
+    """
+    Creates or refreshes the MV that stores all eligible user ids.
+    (users with >= MIN_N_USER_RATINGS ratings across ratings + app_ratings). Also 
+    creates the all_ratings view which is a combination of the table ratings and 
+    app_ratings. "ratings" includes the ratings from MovieLense 20M dataset. The 
+    app_ratings contains the ratings from the registered user. This data is evolving
+    over time.
+    """
 
-    Steps:
-    1. Connects to the PostgreSQL database.
-    2. Creates the materialized view if it does not exist yet.
-    3. Ensures the necessary indexes exist (for fast refresh and lookups).
-    4. Refreshes the MV so it contains the newest data from the 'ratings' table.
-       - Uses a concurrent refresh if possible (no read lock).
-       - Falls back to a normal refresh if concurrent mode is not supported.
+    # Merge the ratings table with the registered user ratings (app_ratings) table.
+    create_uv_all_ratings()
 
-    Parameters
-    ----------
-
-    Returns
-    -------
-    refreshed_concurrently: bool:
-            True:   The MV was refreshed using CONCURRENTLY (non-blocking). 
-                    Other code can still use the materialized view while the new one 
-                    is getting builded
-            False:  The MV was refreshed using the normal (blocking) method.
-    '''
-
-    # Run transaction and create mv if it does not exist 
+    # Create MV -> Only users with more than min_r exists 
     with engine.begin() as conn:
+        # Ensure MV exists
         conn.execute(text(f"""
             CREATE MATERIALIZED VIEW IF NOT EXISTS {MV_NAME} AS
             SELECT "userId"
-            FROM ratings
+            FROM all_ratings
             GROUP BY "userId"
             HAVING COUNT(*) >= :min_r;
         """), {"min_r": MIN_N_USER_RATINGS})
-        # Ensure unique index needed for CONCURRENTLY
+
+        # Unique index needed for REFRESH CONCURRENTLY
         conn.execute(text(f"""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_{MV_NAME}_userid
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_{MV_NAME}_userId
             ON {MV_NAME}("userId");
         """))
-        # Helpful base-table index (no-op if exists)
-        conn.execute(text("""
-            CREATE INDEX IF NOT EXISTS idx_ratings_userid
-            ON ratings("userId");
-        """))
 
-    # Refresh MV
+    # 2) Refresh MV (concurrent if possible)
     try:
-        # Try a concurrent refresh of the MV -> new mv gets created while old one still 
-        # exists -> mv can be accessed while updating.
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-            # Optional: advisory lock so only one refresh runs at a time
             conn.execute(text("SELECT pg_try_advisory_lock(987654321);"))
             conn.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {MV_NAME};"))
             conn.execute(text("SELECT pg_advisory_unlock(987654321);"))
-        refreshed_concurrently = True
+        return True
     except Exception:
-        # Fallback if concurrent refresh isn’t possible
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             conn.execute(text(f"REFRESH MATERIALIZED VIEW {MV_NAME};"))
-        refreshed_concurrently = False
-    
-    return refreshed_concurrently
-
-
-# def _estimate_avg_per_user() -> float:
-#     """
-#     Estimate avg ratings per eligible user. Cheap and good enough.
-#     """
-#     q = text(f"""
-#         SELECT AVG(cnt)::float AS avg_cnt
-#         FROM (
-#           SELECT COUNT(*) AS cnt
-#           FROM ratings
-#           WHERE "userId" IN (SELECT "userId" FROM {MV_NAME})
-#           GROUP BY "userId"
-#         ) t;
-#     """)
-#     try:
-#         with engine.connect() as conn:
-#             df = pd.read_sql_query(q, conn)
-#         val = df.iloc[0]["avg_cnt"]
-#         return float(val) if val is not None else ASSUMED_AVG_PER_USER
-#     except Exception:
-#         return ASSUMED_AVG_PER_USER
-
+        return False
 
 
 def _load_full_histories_for_n_users(n_users_target: int) -> pd.DataFrame:
@@ -158,37 +183,33 @@ def _load_full_histories_for_n_users(n_users_target: int) -> pd.DataFrame:
     if n_users_target <= 0:
         raise ValueError("n_users_target must be > 0")
 
+     # Ensure MV exists (and view)
+    _create_mv_if_missing()
+
     # Check MV size (optional but helpful for a clear error)
     with engine.connect() as conn:
         mv_cnt = pd.read_sql_query(
-            text('SELECT COUNT(*) AS c FROM {MV_Name};'), conn
+            text(f'SELECT COUNT(*) AS c FROM {MV_NAME};'), conn
         ).iloc[0, 0]
 
+    # If mv size is lower than desired n_users -> use mv size    
     if mv_cnt < n_users_target:
-        # Choose ONE of the following behaviors:
-
-        # 1) Strict: complain clearly
-        # raise ValueError(f"Requested {n_users_target} users, but MV has only {mv_cnt}. Refresh MV or lower target.")
-
-        # 2) Lenient: use as many as available
         n_users_target = mv_cnt
 
-    sql = text("""
-        WITH sample_users AS (
-          SELECT "userId"
-          FROM eligible_users
-          ORDER BY RANDOM()     -- different set every run
-          LIMIT :k_users        -- EXACT user count
-        )
-        SELECT r."userId", r."movieId", r.rating, r."timestamp"
-        FROM ratings r
-        JOIN sample_users su USING ("userId");
+    # Extract all users n_users_target from the MV
+    sql = text(f"""
+            WITH sample_users AS (
+                SELECT "userId"
+                FROM {MV_NAME}
+                ORDER BY RANDOM()     -- different set every run
+                LIMIT :k_users        -- EXACT user count
+            )
+            SELECT r."userId", r."movieId", r.rating, r."timestamp"
+            FROM all_ratings r
+            JOIN sample_users su USING ("userId");
     """)
     with engine.connect() as conn:
         df = pd.read_sql_query(sql, conn, params={"k_users": int(n_users_target)})
-
-    # Sanity log (optional)
-    # print(f"[Loader] users_requested={n_users_target}, users_returned={df['userId'].nunique()}, rows={len(df)}")
 
     return df
 
