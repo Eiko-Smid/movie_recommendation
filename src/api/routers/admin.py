@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from src.db.database_session import get_db
-from src.db.users import User
+from src.db.models.users import User
 from src.api.security import get_current_user, check_user_authorization
 from src.api.role import UserRole
 from src.api.schemas import UserResponse, GetAllUsersResponse, UserRoleRequest, ActiveUserRequest

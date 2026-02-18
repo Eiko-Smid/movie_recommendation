@@ -5,6 +5,10 @@ from src.api.role import UserRole
 from src.models.als_movie_rec import ALS_Metrics
 
 
+#___________________________________________________________________________________________________
+# General schemas
+#___________________________________________________________________________________________________
+
 class BestParameters(BaseModel):
     """Stores best hyperparameter combination found during training."""
     best_K1: int
@@ -21,12 +25,6 @@ class ALS_Parameter_Grid(BaseModel):
     factors_list: Sequence[int] = Field((128, 256), description="latent factors")
     reg_list: Sequence[float] = Field((0.10, 0.20), description="regularization")
     iters_list: Sequence[int] = Field((25,), description="ALS iterations")
-
-#___________________________________________________________________________________________________
-# General schemas
-#___________________________________________________________________________________________________
-
-
 
 
 #___________________________________________________________________________________________________
@@ -92,6 +90,15 @@ class RecommendRequest(BaseModel):
     )
 
 
+class RateMovieRequest(BaseModel):
+    movie_id: int = Field(..., description="ID of the movie to rate.")
+    rating: float = Field(
+        ...,
+        ge=0.5, # TODO: Check if this is really the min value of 20M dataset. Correct accordingly
+        le=5.0,
+        description="Rating value of the movie."
+    )
+
 #___________________________________________________________________________________________________
 # Response schemas
 #___________________________________________________________________________________________________
@@ -147,6 +154,19 @@ class TrainResponse(BaseModel):
     best_param: Optional[BestParameters] = Field(None, description="Best hyperparameters")
     best_metrics: Optional[ALS_Metrics] = Field(None, description="Best evaluation metrics")
 
+
+
+#___________________________________________________________________________________________________
+# Rate movie response schema
+#___________________________________________________________________________________________________
+
+class RateMovieResponse(BaseModel):
+    """Response model for the /rate_movie endpoint."""
+    message: str = Field(..., description="Status message for the rating operation.")
+    movie_id: int = Field(..., description="ID of the rated movie.")
+    user_id: int = Field(..., description="ID of the user who rated the movie.")
+    rating: float = Field(..., description="Rating value submitted.")
+    timestamp: int = Field(..., description="Unix timestamp when the rating was saved.")
 
 class RecommendResponse(BaseModel):
     """Output schema for the `/recommend` endpoint."""

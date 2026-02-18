@@ -1,5 +1,5 @@
 -- Inits the Database. 
--- Gets called automnatically. The containers build in logic checks if "PGDATA" folder is empty
+-- Gets called automatically. The containers build in logic checks if "PGDATA" folder is empty
 -- if yes all files inside "/docker-entrypoint-initdb.d/" will be run automatically in alphabetic order.
 -- Use same column names as CSV headers to simplify COPY. Put special ones like "movieId" in quotes 
 -- otherwise postgres will automatically lower case them to: movieid and then it ma yenter problem in code.
@@ -36,6 +36,16 @@ CREATE TABLE IF NOT EXISTS users (
     role            user_role NOT NULL DEFAULT 'USER'-- default USER
 );
 
+-- The ratings of the registered users from users table will we inside this table
+-- This table will later be joined with ratings to get the overall training data
+-- to train the model.
+Create Table IF NOT EXISTS app_ratings (
+    "userId"    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    "movieId"   INTEGER NOT NULL REFERENCES movies("movieId") ON DELETE CASCADE,
+    rating      NUMERIC(2,1) NOT NULL,
+    "timestamp" BIGINT NOT NULL,
+    PRIMARY KEY ("userId", "movieId")
+);
 
 -- Create app_meta tabel which later be used to check if copy process of data is finished -> start api
 CREATE TABLE IF NOT EXISTS app_meta(
@@ -47,3 +57,4 @@ CREATE TABLE IF NOT EXISTS app_meta(
 -- Helpful indexes
 CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings("userId");
 CREATE INDEX IF NOT EXISTS idx_ratings_movie ON ratings("movieId");
+CREATE INDEX IF NOT EXISTS idx_app_ratings_movie ON app_ratings("movieId");

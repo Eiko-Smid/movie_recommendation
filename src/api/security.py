@@ -11,7 +11,7 @@ from jose import jwt, JWTError
 from passlib.context import CryptContext
 
 from src.api.role import UserRole
-from src.db.users import User
+from src.db.models.users import User
 from src.db.database_session import SessionLocal
 
 

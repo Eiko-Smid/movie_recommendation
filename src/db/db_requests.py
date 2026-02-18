@@ -161,7 +161,7 @@ def _load_full_histories_for_n_users(n_users_target: int) -> pd.DataFrame:
     # Check MV size (optional but helpful for a clear error)
     with engine.connect() as conn:
         mv_cnt = pd.read_sql_query(
-            text('SELECT COUNT(*) AS c FROM eligible_users;'), conn
+            text('SELECT COUNT(*) AS c FROM {MV_Name};'), conn
         ).iloc[0, 0]
 
     if mv_cnt < n_users_target:

@@ -34,7 +34,7 @@ import mlflow
 from src.db.database_session import engine
 
 from src.api.security import init_authorization
-from src.api.routers import auth, admin, train, recommend
+from src.api.routers import auth, admin, train, recommend, rate_movie
 
 from src.api.schemas import (
     RecommendRequest,
@@ -109,6 +109,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(train.router)
 app.include_router(recommend.router)
+app.include_router(rate_movie.router)
 
 
 @app.get("/health", tags=["System"])

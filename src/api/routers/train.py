@@ -26,7 +26,7 @@ from src.models.management import (
     update_champ_model
 )
 
-from src.db.users import User
+from src.db.models.users import User
 from src.api.security import check_user_authorization
 from src.api.role import UserRole
 

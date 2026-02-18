@@ -12,14 +12,14 @@ from src.models.management import (
     get_champion_model
 )
 
-from src.db.users import User
+from src.db.models.users import User
 from src.api.security import check_user_authorization
 from src.api.role import UserRole
 
 
 router = APIRouter(prefix="/recommend", tags=["recommend"])
 @router.post(
-    "/recommend",
+    "/recommend_movie",
     response_model=RecommendResponse,
 )
 def recommend_endpoint(

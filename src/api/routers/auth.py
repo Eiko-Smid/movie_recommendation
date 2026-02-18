@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from src.db.database_session import get_db
-from src.db.users import User
+from src.db.models.users import User
 from src.api.schemas import UserCreate, Token
 from src.api.security import hash_password, verify_password, create_access_token
 
