@@ -682,27 +682,27 @@ class TrainCSRStore:
             
 
 
-def prepare_training(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, train_param: TrainRequest):
-    """Prepare train/test CSRs, mappings and popular items for training."""
-    train_csr, test_csr, test_csr_masked, mappings, evaluation_set = prepare_data(
-        df=df_ratings, pos_threshold=train_param.pos_threshold
-    )
+# def prepare_training(df_ratings: pd.DataFrame, df_movies: pd.DataFrame, train_param: TrainRequest):
+#     """Prepare train/test CSRs, mappings and popular items for training."""
+#     train_csr, test_csr, test_csr_masked, mappings, evaluation_set = prepare_data(
+#         df=df_ratings, pos_threshold=train_param.pos_threshold
+#     )
 
-    movie_id_dict = build_movie_id_dict(df_movies)
+#     movie_id_dict = build_movie_id_dict(df_movies)
 
-    popular_item_ids = get_popular_items(
-        df=df_ratings, top_n=train_param.n_popular_movies, threshold=train_param.pos_threshold
-    )
+#     popular_item_ids = get_popular_items(
+#         df=df_ratings, top_n=train_param.n_popular_movies, threshold=train_param.pos_threshold
+#     )
 
-    return (
-        df_ratings,
-        train_csr,
-        test_csr,
-        test_csr_masked,
-        mappings,
-        movie_id_dict,
-        popular_item_ids,
-    )
+#     return (
+#         df_ratings,
+#         train_csr,
+#         test_csr,
+#         test_csr_masked,
+#         mappings,
+#         movie_id_dict,
+#         popular_item_ids,
+#     )
 
 
 # Init the csr matrix store obj

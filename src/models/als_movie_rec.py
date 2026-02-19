@@ -236,9 +236,9 @@ def prepare_data(
 
     # Store mappings
     mappings = Mappings(
-        user_index_to_id=dict(enumerate(user_uniques)),
+        user_index_to_id=dict(enumerate(user_uniques)), # [0, 1, 2] -> [2, 5, 7]
         item_index_to_id=dict(enumerate(item_uniques)),
-        user_id_to_index=user_id_to_index,
+        user_id_to_index=user_id_to_index,              # [2, 5, 7] -> [0, 1, 2]
         item_id_to_index=item_id_to_index,
     )
 

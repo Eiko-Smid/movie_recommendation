@@ -47,11 +47,17 @@ Create Table IF NOT EXISTS app_ratings (
     PRIMARY KEY ("userId", "movieId")
 );
 
--- Create app_meta tabel which later be used to check if copy process of data is finished -> start api
-CREATE TABLE IF NOT EXISTS app_meta(
+-- Create app_meta table which later be used to check if copy process of data is finished -> start api
+CREATE TABLE IF NOT EXISTS app_meta (
     key TEXT Primary Key,
     value TEXT NOT NULL
 );
+
+-- Table to store general API configurations
+CREATE TABLE IF NOT EXISTS api_config (
+    key TEXT PRIMARY KEY,
+    value BIGINT NOT NULL
+)
 
 -- Helpful indexes
 CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings("userId");
