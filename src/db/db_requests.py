@@ -1,6 +1,14 @@
 import os
-from sqlalchemy import create_engine, text
+
+from typing import Optional
+
+from sqlalchemy import create_engine, text, select, func
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
+import logging
+
 from dotenv import load_dotenv 
 
 from math import ceil
@@ -8,17 +16,45 @@ from math import ceil
 from fastapi import HTTPException, status
 import pandas as pd
 
-from src.db.database_session import engine
+from src.db.models.ratings import Rating
+from src.db.database_session import engine, SessionLocal
 
 
 # Database settings
-MV_NAME = "user_filter"          # name of materialized view
+MV_NAME = "user_filter"             # name of materialized view
 MIN_N_USER_RATINGS = 6              # users must have >=MIN_N_USER_RATINGS ratings to be part of MV
-ASSUMED_AVG_PER_USER = 50.0         # rough avg ratings per eligible user (for sizing K)
-RANDOM_OVERSAMPLE = 1.10            # oversample users by ~10% to hit target size
-TARGET_FLOOR_RATIO = 0.9            # accept result if >=90% of n_rows
-UNDERSHOOT_RETRY_FACTOR = 1.5       # if we undershoot badly, bump K by 50% once
-AUTO_REFRESH_MV = False             # keep False to stay within +20% runtime budget
+USER_ID_OFFSET = None               
+
+# ASSUMED_AVG_PER_USER = 50.0         # rough avg ratings per eligible user (for sizing K)
+# RANDOM_OVERSAMPLE = 1.10            # oversample users by ~10% to hit target size
+# TARGET_FLOOR_RATIO = 0.9            # accept result if >=90% of n_rows
+# UNDERSHOOT_RETRY_FACTOR = 1.5       # if we undershoot badly, bump K by 50% once
+# AUTO_REFRESH_MV = False             # keep False to stay within +20% runtime budget
+
+
+# Define logger for logging
+logger = logging.getLogger(__name__)
+
+
+def get_user_id_offset() -> Optional[int]:
+    '''
+    Creates an SQLAlchemy session and returns the max user id of the ratings table. 
+    Closes the session at the end. The id can then be used as an offset id value for
+    another table, which includes independend user ids. 
+    '''
+    # Creates DB session
+    session = SessionLocal()
+
+    try:
+        # Get the max user id of 
+        stmt = select(func.max(Rating.userId))
+        user_id_off: Optional[int] = session.scalar(stmt)
+        return user_id_off
+    except SQLAlchemyError:
+        logger.exception("Failed to refresh the user id offset from ratings table.")
+        raise
+    finally:
+        session.close()
 
 
 def _mv_exists() -> bool:
@@ -61,41 +97,17 @@ def _ensure_indexes() -> None:
         """))
 
 
-# def create_uv_all_ratings():
-#     '''
-#     Create unified rating view. 
-#     '''
-#     with engine.begin() as conn:
-#         conn.execute(text(f'''
-#             CREATE OR REPLACE VIEW all_ratings AS
-#             SELECT
-#                 ('ml_' || "userId"::text) AS user_key,
-#                 "movieId",
-#                 rating,
-#                 "timestamp"
-#             FROM ratings
-#             UNION ALL
-#             SELECT
-#                 ('app_' || "userId"::text) AS user_key,
-#                 "movieId",
-#                 rating,
-#                 "timestamp"
-#             FROM app_ratings;
-#         '''))
-
-
 def create_uv_all_ratings() -> None:
     """
     Create unified ratings view with integer "userId".
     App users are shifted by (max MovieLens userId + 1).
     """
-    with engine.begin() as conn:
-        conn.execute(text("""
-            CREATE OR REPLACE VIEW all_ratings AS
-            WITH max_index AS (
-                SELECT COALESCE(MAX("userId"), 0) + 1 AS offset
-                FROM ratings
-            )
+    # Use max uid and fallback to 1 if not existing
+    uid_offset = (get_user_id_offset() or 0) + 1
+
+    # Union ratings with app_ratings
+    sql = text("""
+        CREATE OR REPLACE VIEW all_ratings AS
             SELECT
                 r."userId"::bigint AS "userId",
                 r."movieId",
@@ -104,33 +116,17 @@ def create_uv_all_ratings() -> None:
             FROM ratings r
             UNION ALL
             SELECT
-                (ar."userId"::bigint + m.offset) AS "userId",
+                (ar."userId"::bigint + :offset) AS "userId",
                 ar."movieId",
                 ar.rating,
                 ar."timestamp"
-            FROM app_ratings ar
-            CROSS JOIN max_index m;
-        """))
-
-
-def _create_mv_if_missing() -> None:
-    if _mv_exists():
-        return
-    
-    # Merge the ratings table with the registered user ratings (app_ratings) table.
-    create_uv_all_ratings()    
-
-    # Create MV (run once; safe to call every time)
-    # Use a TX for CREATE; REFRESH CONCURRENTLY can't be in a TX, so we do not refresh here.
-    with engine.begin() as conn:
-        conn.execute(text(f"""
-            CREATE MATERIALIZED VIEW IF NOT EXISTS {MV_NAME} AS
-            SELECT "userId"
-            FROM all_ratings
-            GROUP BY "userId"
-            HAVING COUNT(*) >= :min_r;
-        """), {"min_r": MIN_N_USER_RATINGS})
-    _ensure_indexes()
+            FROM app_ratings ar;        
+    """)
+    try:
+        with engine.begin() as conn:
+            conn.execute(sql, {"offset": uid_offset})
+    except SQLAlchemyError:
+        logger.exception("Failed to Union ratings with app_ratings table.")
 
 
 def refresh_mv() -> bool:
@@ -176,15 +172,67 @@ def refresh_mv() -> bool:
         return False
 
 
+def _load_full_mv_users() -> pd.DataFrame:
+    # Check if MV exists and create if not
+    if not _mv_exists():
+        try:
+            refresh_mv()
+        except SQLAlchemyError as e:
+            # DB-layer error: best treated as dependency/service issue (503)
+            logger.exception("Failed to refresh/create MV '%s' due to DB error.", MV_NAME)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Materialized view '{MV_NAME}' is not available (DB error). Try again later.",
+            ) from e
+        except Exception as e:
+            # Truly unexpected error: 500
+            logger.exception("Unexpected error while refreshing/creating MV '%s'.", MV_NAME)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Unexpected error while preparing materialized view '{MV_NAME}'.",
+            ) from e
+    
+    # Extract all users n_users_target from the MV
+    sql = text(f"""
+            WITH sample_users AS (
+                SELECT "userId"
+                FROM {MV_NAME}
+            )
+            SELECT r."userId", r."movieId", r.rating, r."timestamp"
+            FROM all_ratings r
+            JOIN sample_users su USING ("userId");
+    """)
+    with engine.connect() as conn:
+        df = pd.read_sql_query(sql, conn)
+
+    return df
+
+
 def _load_full_histories_for_n_users(n_users_target: int) -> pd.DataFrame:
     """
-    Sample EXACTLY 'n_users_target' random eligible users (>=6 ratings) and return ALL of their ratings.
+    Sample EXACTLY 'n_users_target' randomly of the mv and return ALL of their ratings.
     """
     if n_users_target <= 0:
         raise ValueError("n_users_target must be > 0")
-
-     # Ensure MV exists (and view)
-    _create_mv_if_missing()
+    
+    # Check if MV exists and create if not
+    if not _mv_exists():
+        try:
+            refresh_mv()
+        except SQLAlchemyError as e:
+            # DB-layer error: best treated as dependency/service issue (503)
+            logger.exception("Failed to refresh/create MV '%s' due to DB error.", MV_NAME)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Materialized view '{MV_NAME}' is not available (DB error). Try again later.",
+            ) from e
+        except Exception as e:
+            # Truly unexpected error: 500
+            logger.exception("Unexpected error while refreshing/creating MV '%s'.", MV_NAME)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Unexpected error while preparing materialized view '{MV_NAME}'.",
+            ) from e
 
     # Check MV size (optional but helpful for a clear error)
     with engine.connect() as conn:
@@ -212,36 +260,3 @@ def _load_full_histories_for_n_users(n_users_target: int) -> pd.DataFrame:
         df = pd.read_sql_query(sql, conn, params={"k_users": int(n_users_target)})
 
     return df
-
-
-
-# def _sample_full_histories(n_rows_target: int) -> pd.DataFrame:
-#     """
-#     Sample K random eligible users and fetch ALL their ratings.
-#     Targets ~n_rows_target rows overall (not exact, because full histories vary).
-#     """
-#     avg_cnt = _estimate_avg_per_user(engine)
-#     k_users = max(1, ceil((n_rows_target / max(1.0, avg_cnt)) * RANDOM_OVERSAMPLE)) if n_rows_target > 0 else 500
-
-#     sql = text(f"""
-#         WITH sample_users AS (
-#           SELECT "userId"
-#           FROM {MV_NAME}
-#           ORDER BY RANDOM()     -- new sample each run
-#           LIMIT :k_users
-#         )
-#         SELECT r."userId", r."movieId", r.rating, r."timestamp"
-#         FROM ratings r
-#         JOIN sample_users su USING ("userId");
-#     """)
-
-#     with engine.connect() as conn:
-#         df = pd.read_sql_query(sql, conn, params={"k_users": k_users})
-
-#     # If we undershoot badly (rare), bump K once
-#     if n_rows_target > 0 and len(df) < int(TARGET_FLOOR_RATIO * n_rows_target):
-#         k_users = int(ceil(k_users * UNDERSHOOT_RETRY_FACTOR))
-#         with engine.connect() as conn:
-#             df = pd.read_sql_query(sql, conn, params={"k_users": k_users})
-
-#     return df

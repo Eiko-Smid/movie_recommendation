@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS ratings (
     "userId"    INTEGER NOT NULL,
     "movieId"   INTEGER NOT NULL REFERENCES movies("movieId") ON DELETE CASCADE,
     rating      NUMERIC(2,1) NOT NULL,
-    "timestamp" BIGINT NOT NULL  -- quoted because it's a reserved word
+    "timestamp" BIGINT NOT NULL,  -- quoted because it's a reserved word
+    PRIMARY KEY ("userId", "movieId")
 );
 
 -- Create type to ensure our column later on can only contain the predefined roles. 
@@ -52,12 +53,6 @@ CREATE TABLE IF NOT EXISTS app_meta (
     key TEXT Primary Key,
     value TEXT NOT NULL
 );
-
--- Table to store general API configurations
-CREATE TABLE IF NOT EXISTS api_config (
-    key TEXT PRIMARY KEY,
-    value BIGINT NOT NULL
-)
 
 -- Helpful indexes
 CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings("userId");

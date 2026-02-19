@@ -37,7 +37,7 @@ from src.api.security import init_authorization
 from src.api.routers import auth, admin, train, recommend, rate_movie
 
 from src.api.schemas import (
-    RecommendRequest,
+    RecommendMovieByIDRequest,
     RecommendResponse,
 )
 

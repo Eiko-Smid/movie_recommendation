@@ -23,7 +23,7 @@ EXPOSE 5678 8000 5432
 # Run API under debugpy; module path points to your file
 # Note: uvicorn module is "src.api.main:app"
 # CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", \
-  #   "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+#     "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # For immediate readiness (no debugger)
 CMD ["python", "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
