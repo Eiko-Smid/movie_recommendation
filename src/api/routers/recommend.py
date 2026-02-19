@@ -69,7 +69,7 @@ def recommend_movie_current_user(
 def recommend_movie_by_id(
     recom_param: RecommendMovieByIDRequest,
     champion_model = Depends(get_champion_model),
-    _: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.USER)),
+    _: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
     '''
     Generates a personalized movie recommendation if the given user is part of the matrix 
@@ -78,6 +78,9 @@ def recommend_movie_by_id(
     getting computed on the fly. 
     If none of both is the case, the user get recommendations based of a list of popular 
     movies.
+    
+    Attention: If u want recommendations for users in app_ratings, u must manually add the 
+    offset to the user id (get_user_id_offset() == offset).
 
     Parameters
     ----------
