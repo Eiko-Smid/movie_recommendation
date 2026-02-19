@@ -66,8 +66,27 @@ class TrainRequest(BaseModel):
     n_popular_movies: int = Field(100, description="# popular movies for cold-start")
 
 
-class RecommendRequest(BaseModel):
-    """Input schema for the `/recommend` endpoint."""
+class RecommendMovieCurrentUserRequest(BaseModel):
+    """Input schema for the `/recommend_movie_for_current_user` endpoint."""
+    n_movies_to_rec: int = Field(
+        5,
+        gt=0,
+        le=100,
+        description="Number of movie recommendations to return (1–100).",
+        example=10,
+    )
+    new_user_interactions: Optional[List[int]] = Field(
+        None,
+        description=(
+            "Optional list of movie IDs recently watched or liked by the user. "
+            "Used for cold-start or fold-in recommendations."
+        ),
+        example=[296, 318, 593],
+    )
+
+
+class RecommendMovieByIDRequest(BaseModel):
+    """Input schema for the `/recommend_movie_by_id` endpoint."""
     user_id: int = Field(
         ...,
         description="ID of the user for whom to generate recommendations.",

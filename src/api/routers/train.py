@@ -1,6 +1,9 @@
 from fastapi import APIRouter, HTTPException, status, Request, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, Sequence, List, Dict, Tuple
+
+import logging
+
 import pandas as pd
 
 from src.models.als_movie_rec import (
@@ -8,9 +11,10 @@ from src.models.als_movie_rec import (
 )
 from src.db.database_session import engine
 from src.db.db_requests import (
-    _create_mv_if_missing,
-    _load_full_histories_for_n_users,
     refresh_mv,
+    _load_full_histories_for_n_users,
+    _load_full_mv_users,
+    MV_NAME
 ) 
 
 from src.api.schemas import (
@@ -29,6 +33,10 @@ from src.models.management import (
 from src.db.models.users import User
 from src.api.security import check_user_authorization
 from src.api.role import UserRole
+
+
+# Init logger
+logger = logging.getLogger(__name__)
 
 # _________________________________________________________________________________________________________
 # Data loading functionality 
@@ -85,7 +93,7 @@ from src.api.role import UserRole
     
 #     return df_ratings, df_movies
 
-
+    
 def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Load ratings + movies from DB (same logic as before in main).
 
@@ -94,24 +102,31 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
     n_users = int(train_param.n_users)
 
     try:
-        _create_mv_if_missing()
+        # Refresh or create MV 
+        refresh_mv()
 
+        # Set n_users to default value if zero
         if n_users == 0:
             n_users = 500
 
-        with engine.connect() as conn:
+        with engine.connect() as conn:            
             if n_users < 0:
-                df_ratings = pd.read_sql_query('SELECT "userId", "movieId", rating, "timestamp" FROM ratings', conn)
+                # Load all the data of MV
+                logger.info("Training with full MV ('%s') ratings.", MV_NAME)
+                df_ratings = _load_full_mv_users()
             else:
+                # Load n_users data                
                 df_ratings = _load_full_histories_for_n_users(n_users_target=n_users)
+                logger.info("Training with partial MV ('%s') ratings", MV_NAME)
 
+            # Load movies
             df_movies = pd.read_sql_query('SELECT "movieId", title, genres FROM movies', conn)
+            logger.info("Loaded movies successfully.")
 
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to load data from database: {e}")
 
     return df_ratings, df_movies
-
 
 
 # _________________________________________________________________________________________________________
