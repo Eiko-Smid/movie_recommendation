@@ -14,7 +14,7 @@ from sqlalchemy import text
 from dotenv import load_dotenv 
 
 from fastapi import FastAPI, HTTPException, status, Query, Request, APIRouter, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 from fastapi.requests import Request
 from contextlib import asynccontextmanager
@@ -29,6 +29,8 @@ import pandas as pd
 
 import zlib
 import mlflow
+
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 # Import sql request code
 from src.db.database_session import engine
@@ -183,3 +185,12 @@ async def unhandled_exception_handler(_: Request, exc: Exception):
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "Internal server error while training the model."},
     )
+
+
+@app.get("/metrics")
+def metrics():
+    """
+    Prometheus scrape endpoint.
+    Returns all registered metrics in Prometheus text format.
+    """
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
