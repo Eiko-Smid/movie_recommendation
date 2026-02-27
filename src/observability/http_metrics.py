@@ -37,7 +37,7 @@ If a request cannot be matched to a route template:
 from __future__ import annotations
 
 import time
-from typing import Optional
+from typing import Optional, Set
 
 from prometheus_client import Counter, Histogram, Gauge
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -86,24 +86,27 @@ Labels:
 HTTP_REQUESTS_IN_FLIGHT = Gauge(
     "http_requests_in_flight",
     "Number of HTTP requests in flight",
-    ["method", "path"],
+    ["method"],
 )
 
+# List of metrics to exclude from http track
+EXCLUDE_TEMPPLATES: Set = {
+    "/metrics",
+}
 
 # =============================================================================
 # Helper functions
 # =============================================================================
 
-def get_path_label(request: Request, status_code: str) -> str:
+def get_endpoint_route(request: Request) -> str:
     """
-    Determine a low-cardinality path label for Prometheus metrics.
+    Determine endpoint route of endpoint that corresponds to given request.
+    If no route was found, return None.
 
     Parameters
     ----------
     request:
         Incoming Starlette/FastAPI request.
-    status_code:
-        HTTP status code as string (e.g. "200", "404", "500").
 
     Returns
     -------
@@ -112,27 +115,14 @@ def get_path_label(request: Request, status_code: str) -> str:
           Example: "/recommend/recommend_movie_for_current_user"
         - If status_code == "404": "__not_found__"
         - Else: "__unmatched__"
-
-    Notes
-    -----
-    We intentionally do NOT use request.url.path or request.scope["path"]
-    because those can contain IDs and lead to cardinality explosion.
     """
     # Starlette stores the matched route in request.scope["route"] once resolved.
     route = request.scope.get("route")
     if route is not None and hasattr(route, "path"):
         return str(route.path)
 
-    # If no route is available, at least distinguish 404 from other issues.
-    if status_code == "404":
-        return "__not_found__"
+    return None
 
-    return "__unmatched__"
-
-
-# =============================================================================
-# Middleware class
-# =============================================================================
 
 class PrometheusHTTPMetricsMiddleware(BaseHTTPMiddleware):
     """
@@ -149,76 +139,65 @@ class PrometheusHTTPMetricsMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         """
-        Process a request, record metrics, then return the response.
+        This method get's automatically called whenever an HTTP request hits our API.
+        We then receive the HTTP request and call_next http response.  
 
         Parameters
         ----------
         request:
-            Incoming request.
+            Incoming HTTP request.
         call_next:
-            Callable that forwards the request to the downstream app.
+            The HTTP response produced by your app.
 
         Returns
         -------
         Response:
             Response returned by downstream endpoint/middleware.
         """
+        # Safe start time when the endpoint got called 
+        start_time = time.perf_counter()
+
+        # Get request method
         method = request.method
 
-        # Default status used if an exception bubbles up.
-        status_code_str: str = "500"
-
-        # We initially don't know the final route template.
-        # We'll determine it after call_next() (or in finally).
-        path_label: str = "__unmatched__"
-
-        # Track start time for latency.
-        start = time.perf_counter()
-
-        # We cannot reliably label in-flight with the final route template
-        # *before* routing happens. However, once routing is done (after call_next),
-        # we can use the template. To ensure inc/dec labels match, we:
-        # - resolve the route template after call_next
-        # - then inc and dec immediately in finally (net 0) wouldn't help
-        #
-        # So for correct "in-flight" we need the template early.
-        # FastAPI often resolves route before this middleware runs, but not always.
-        #
-        # We attempt to resolve early; if missing we use "__unmatched__".
-        early_route = request.scope.get("route")
-        if early_route is not None and hasattr(early_route, "path"):
-            path_label = str(early_route.path)
-
-        # Increment in-flight with whatever best label we have right now.
-        HTTP_REQUESTS_IN_FLIGHT.labels(method=method, path=path_label).inc()
+        # Increase the current number of requests counter, because request occurred 
+        HTTP_REQUESTS_IN_FLIGHT.labels(method).inc()
+        # Default status used if an exception occurred.
+        status_code_str = "500"
 
         try:
-            # Execute downstream app (routing + endpoint)
+            # Wait until the endpoint is finished and returned response
             response = await call_next(request)
+            # Extract response status code and return it
             status_code_str = str(response.status_code)
             return response
-
         finally:
-            # Prefer the final, best label (template if available).
-            final_path_label = get_path_label(request, status_code_str)
+            # get the endpoint route corresponding to the request
+            route_template = get_endpoint_route(
+                request=request,
+                status_code=status_code_str
+            )
 
-            # Measure duration
-            duration = time.perf_counter() - start
+            # Decrease numb of current active endpoints, cause endpoint is finished
+            HTTP_REQUESTS_IN_FLIGHT.labels(method).dec()
 
-            # Observe duration and count requests using FINAL label
+            # Check if route template exists, else return 
+            if route_template is None or route_template in EXCLUDE_TEMPPLATES:
+                return response
+            
+            # Measure duration time of endpoint call
+            duration = time.perf_counter() - start_time
+
+            # Save time measurement
             HTTP_REQUEST_DURATION_SECONDS.labels(
                 method=method,
-                path=final_path_label,
+                path=route_template,
             ).observe(duration)
 
+            # Track total number of endpoint calls. 
             HTTP_REQUESTS_TOTAL.labels(
                 method=method,
-                path=final_path_label,
+                path=route_template,
                 status=status_code_str,
             ).inc()
-
-            # Decrement in-flight using the SAME label we incremented with.
-            HTTP_REQUESTS_IN_FLIGHT.labels(method=method, path=path_label).dec()
-
-
             
