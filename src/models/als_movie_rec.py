@@ -547,8 +547,8 @@ def als_grid_search(
     Performs a grid search over BM25 and ALS hyperparameters to find the best‐performing
     ALS model based on the "map_@_k" metric.
 
-    If n_samples > 0 then only a radnomly sampled part of all aprameter combinations are
-    used to train the model. This part is optinal and can be done to speed up the training
+    If n_samples > 0 then only a randomly sampled part of all parameter combinations are
+    used to train the model. This part is optional and can be done to speed up the training
     process.
 
     For each parameter combination, the training matrix is BM25-weighted (and optionally

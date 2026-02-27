@@ -52,6 +52,8 @@ from src.models.management import (
     Model_State,
 )
 
+from src.observability.http_metrics import PrometheusHTTPMetricsMiddleware
+
 
 def csr_fingerprint(X) -> str:
     h = 0
@@ -105,6 +107,10 @@ app = FastAPI(
     description="Movie recommendation system for training recommender model and make recommendation for users.",
     lifespan=lifespan
 )
+
+# Register Prometheus HTTP metrics middleware
+# THis enables the automatic tracking of all endpoints, according to the middleware 
+app.add_middleware(PrometheusHTTPMetricsMiddleware)
 
 # Include router endpoints
 app.include_router(auth.router)
