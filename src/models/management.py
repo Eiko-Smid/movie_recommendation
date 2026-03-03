@@ -1,7 +1,7 @@
 from typing import Dict, List, Tuple, Sequence, Optional, Any
 import logging
 from datetime import datetime
-from time import sleep
+from time import sleep, perf_counter
 from pathlib import Path
 import os
 import tempfile
@@ -37,6 +37,7 @@ from src.api.schemas import (
     BestParameters
 )
 
+from src.observability.metrics import MODEL_PREPROCESSING_DURATIONS_SEC
 
 
 # _________________________________________________________________________________________________________
@@ -146,31 +147,38 @@ def prepare_training(
         data and that there is no information of movies the user likes. Solves the cold
         start problem in the recommendation part.
     '''
-    # Only use random subset of df
-    # perc = 0.8
-    # n_samples = int(df_ratings.shape[0] * perc)
-    # df_ratings = df_ratings.sample(n=n_samples, random_state=np.random.randint(0, 1_000_000))
+    # Measure start time
+    start_time_sec = perf_counter()
+    try:
+        # Only use random subset of df
+        # perc = 0.8
+        # n_samples = int(df_ratings.shape[0] * perc)
+        # df_ratings = df_ratings.sample(n=n_samples, random_state=np.random.randint(0, 1_000_000))
 
-    # Set up model training
-    # Prepare data
-    train_csr, test_csr, test_csr_masked, mappings, evaluation_set = prepare_data(
-        df=df_ratings,
-        pos_threshold= train_param.pos_threshold,
-    )
-    
-    # Print fingerprints of csr amtrices to see if they stay consitent through runs
-    # print("train_csr_hash:", csr_fingerprint(train_csr))
-    # print("test_csr_hash:",  csr_fingerprint(test_csr))
+        # Set up model training
+        # Prepare data
+        train_csr, test_csr, test_csr_masked, mappings, evaluation_set = prepare_data(
+            df=df_ratings,
+            pos_threshold= train_param.pos_threshold,
+        )
+        
+        # Print fingerprints of csr amtrices to see if they stay consitent through runs
+        # print("train_csr_hash:", csr_fingerprint(train_csr))
+        # print("test_csr_hash:",  csr_fingerprint(test_csr))
 
-    # Compute item-movie dict for quick lookup
-    movie_id_dict = build_movie_id_dict(df_movies)
+        # Compute item-movie dict for quick lookup
+        movie_id_dict = build_movie_id_dict(df_movies)
 
-    # Get popular items for the case that a new user occurs that hasn't watched any movies by now.
-    popular_item_ids = get_popular_items(
-        df=df_ratings,
-        top_n=train_param.n_popular_movies,
-        threshold=train_param.pos_threshold)
-    print(f"\nShape of popular_item_ids is {len(popular_item_ids)}")
+        # Get popular items for the case that a new user occurs that hasn't watched any movies by now.
+        popular_item_ids = get_popular_items(
+            df=df_ratings,
+            top_n=train_param.n_popular_movies,
+            threshold=train_param.pos_threshold)
+        print(f"\nShape of popular_item_ids is {len(popular_item_ids)}")
+    finally:
+        # Measure duration time in sec
+        time_duration_sec = perf_counter() - start_time_sec
+        MODEL_PREPROCESSING_DURATIONS_SEC.observe(time_duration_sec)
 
     return df_ratings, train_csr, test_csr, test_csr_masked, mappings, movie_id_dict, popular_item_ids
 
@@ -379,16 +387,15 @@ def did_model_improve(
     else:
         # Retrain champ model on new data using the old best params -> Only one training
         print("\nRetrain the ALS model with champ parameters:\n")
-        for i in range(3):
-            champ_model, champ_metrics_list, champ_params_list, champ_idx, actual_params = als_grid_search(
-                train_csr=train_csr,
-                test_csr=test_csr,
-                bm25_K1_list=[champ_params["bm25_K1"]],
-                bm25_B_list=[champ_params["bm25_B"]],
-                factors_list=[champ_params["factors"]],
-                reg_list=[champ_params["reg"]],
-                iters_list=[champ_params["iters"]]
-            )
+        champ_model, champ_metrics_list, champ_params_list, champ_idx, actual_params = als_grid_search(
+            train_csr=train_csr,
+            test_csr=test_csr,
+            bm25_K1_list=[champ_params["bm25_K1"]],
+            bm25_B_list=[champ_params["bm25_B"]],
+            factors_list=[champ_params["factors"]],
+            reg_list=[champ_params["reg"]],
+            iters_list=[champ_params["iters"]]
+        )
             
         # champ_prec = champ_metrics[champ_idx].prec_at_k
         champ_metrics = champ_metrics_list[champ_idx]
@@ -445,6 +452,9 @@ def update_champ_model(
 
     # Load the new champ model
     app.state.champion_model = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}@Champion")
+
+    # Define app state model version var to track current model version. 
+    app.state.champion_model_version = new_version
 
 
 class ALSRecommenderPyFunc(PythonModel):

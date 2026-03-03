@@ -25,6 +25,7 @@ class ALS_Parameter_Grid(BaseModel):
     factors_list: Sequence[int] = Field((128, 256), description="latent factors")
     reg_list: Sequence[float] = Field((0.10, 0.20), description="regularization")
     iters_list: Sequence[int] = Field((25,), description="ALS iterations")
+    K: int = Field(10, description="Number of items to use for ALS evaluation metrics.")
 
 
 #___________________________________________________________________________________________________

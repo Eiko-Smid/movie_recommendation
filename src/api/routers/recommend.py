@@ -3,6 +3,8 @@ from typing import List, Optional, Sequence, Dict, Tuple
 
 import pandas as pd
 
+import time 
+
 from src.api.schemas import (
     RecommendMovieByIDRequest,
     RecommendResponse,
@@ -19,7 +21,11 @@ from src.db.db_requests import get_user_id_offset
 from src.api.security import check_user_authorization
 from src.api.role import UserRole
 
-from src.observability.metrics import RECOMMENDATION_REQUESTS
+from src.observability.metrics import (
+    RECOMMENDATION_REQUEST_COUNT,
+    RECOMMENDATION_REQUEST_DURATIONS_SEC,
+    MODEL_SERVED_TOTAL,
+)
 
 
 router = APIRouter(prefix="/recommend", tags=["recommend"])
@@ -27,22 +33,27 @@ router = APIRouter(prefix="/recommend", tags=["recommend"])
 
 @router.post(
     "/recommend_movie_for_current_user",
+    response_model=RecommendResponse,
 )
 def recommend_movie_current_user(
     recom_param: RecommendMovieCurrentUserRequest,
+    request: Request,
     champion_model = Depends(get_champion_model),
-    user: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.USER))
-):
+    user: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.USER)),
+):  
     try:
+        # Track start time
+        start_time_sec = time.perf_counter()
+
         if champion_model is None:
-            RECOMMENDATION_REQUESTS.labels(
+            RECOMMENDATION_REQUEST_COUNT.labels(
                 endpoint="recommend_movie_for_current_user",
                 result="failure"
             ).inc()
             raise HTTPException(status_code=503, detail="Champion model not loaded yet")
         
         if user.id is None:
-            RECOMMENDATION_REQUESTS.labels(
+            RECOMMENDATION_REQUEST_COUNT.labels(
                 endpoint="recommend_movie_for_current_user",
                 result="failure"
             ).inc()
@@ -65,17 +76,27 @@ def recommend_movie_current_user(
         movie_titles = df_movie_rec.iloc[0].get("movie_titles", None) or []
         movie_genres = df_movie_rec.iloc[0].get("movie_genres", None) or []
 
-        RECOMMENDATION_REQUESTS.labels(
+        RECOMMENDATION_REQUEST_COUNT.labels(
             endpoint="recommend_movie_for_current_user",
             result="success"
         ).inc()
     
     except Exception:
-        RECOMMENDATION_REQUESTS.labels(
+        RECOMMENDATION_REQUEST_COUNT.labels(
             endpoint="recommend_movie_for_current_user",
             result="failure"
         ).inc()
         raise
+    
+    finally:
+        # Save duration time
+        time_duration_sec = time.perf_counter() - start_time_sec
+        RECOMMENDATION_REQUEST_DURATIONS_SEC.observe(time_duration_sec)
+
+    # Track if recommendation could be computed without errors
+    MODEL_SERVED_TOTAL.labels(
+        model_version=request.app.state.champion_model_version
+    ).inc()
 
     return RecommendResponse(
         user_id=(user_id - user_id_offset),

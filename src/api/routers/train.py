@@ -4,6 +4,8 @@ from typing import Optional, Sequence, List, Dict, Tuple
 
 import logging
 
+import time
+
 import pandas as pd
 
 from src.models.als_movie_rec import (
@@ -34,6 +36,11 @@ from src.db.models.users import User
 from src.api.security import check_user_authorization
 from src.api.role import UserRole
 
+from src.observability.metrics import (
+    MODEL_DATA_LOADING_DURATION_SEC,
+    MODEL_PREC_AT_K,
+    MODEL_MAP_AT_K,
+)
 
 # Init logger
 logger = logging.getLogger(__name__)
@@ -99,6 +106,9 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
     Uses the materialized view and respects `n_users` semantics.
     """
+    # Track start time 
+    start_time_sec = time.perf_counter()
+
     n_users = int(train_param.n_users)
 
     try:
@@ -125,6 +135,10 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to load data from database: {e}")
+    
+    finally:
+        time_duration_sec = time.perf_counter() - start_time_sec
+        MODEL_DATA_LOADING_DURATION_SEC.observe(time_duration_sec)
 
     return df_ratings, df_movies
 
@@ -184,6 +198,7 @@ def train_endpoint(
         Object containing the best hyperparameters 'best_param' and corresponding evaluation
         metrics 'best_metrics' from the training run.
     '''
+
     # Load data
     df_ratings, df_movies = _load_data(train_param=train_param)
 
@@ -212,7 +227,8 @@ def train_endpoint(
         factors_list=train_param.als_parameter.factors_list,
         reg_list=train_param.als_parameter.reg_list,
         iters_list=train_param.als_parameter.iters_list,
-        n_samples=12
+        n_samples=12,
+        K=train_param.als_parameter.K
     )
 
     # Extract best parameters & metrics
@@ -223,17 +239,17 @@ def train_endpoint(
         best_reg=parameter_ls[best_idx]["reg"],
         best_iters=parameter_ls[best_idx]["iters"],
     )
-    best_metrics = metrics_ls[best_idx]
     
     # Check if model has improved compared to current champ model
     improved, champ_model, champ_metrics, champ_params = did_model_improve(
         train_csr=train_csr,
         test_csr=test_csr_masked,
-        best_metrics=best_metrics
+        best_metrics=metrics_ls[best_idx]
     )
 
     # Log param. metrics, models
     if not improved and champ_model is not None:
+        best_metrics = champ_metrics
         new_version, best_weighted_csr = mlflow_log_run(
             train_param=train_param,
             model=champ_model,
@@ -246,17 +262,18 @@ def train_endpoint(
             movie_id_dict=movie_id_dict
         )
     else:
-       new_version, best_weighted_csr = mlflow_log_run(
-            train_param=train_param,
-            model=model,
-            used_grid_param=used_params,
-            mappings=mappings,
-            best_param=best_param,
-            best_metrics=best_metrics,
-            train_csr=train_csr,
-            popular_item_ids=popular_item_ids,
-            movie_id_dict=movie_id_dict
-        )         
+        best_metrics = metrics_ls[best_idx]
+        new_version, best_weighted_csr = mlflow_log_run(
+                train_param=train_param,
+                model=model,
+                used_grid_param=used_params,
+                mappings=mappings,
+                best_param=best_param,
+                best_metrics=metrics_ls[best_idx],
+                train_csr=train_csr,
+                popular_item_ids=popular_item_ids,
+                movie_id_dict=movie_id_dict
+            )         
     
     # Update the champ model
     update_champ_model(
@@ -265,5 +282,18 @@ def train_endpoint(
         best_weighted_csr=best_weighted_csr
     )
 
+    # Track best metrics in prometheus
+    # if train_param.als_parameter.K 
+    k_value = train_param.als_parameter.K if hasattr(train_param.als_parameter, "K") else 10
+    MODEL_PREC_AT_K.labels(
+        model_version=str(new_version),
+        K=str(k_value)
+    ).set(float(best_metrics.prec_at_k))
+
+    MODEL_MAP_AT_K.labels(
+        model_version=str(new_version),
+        K=str(k_value)
+    ).set(float(best_metrics.map_at_k))
+
     # Return train response
-    return TrainResponse(best_param=best_param, best_metrics=metrics_ls[best_idx])
+    return TrainResponse(best_param=best_param, best_metrics=best_metrics)

@@ -3,6 +3,8 @@ import os
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 import logging
 
+import time
+
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Sequence, Tuple, Mapping, Iterable, Any, TypedDict, Union
 from pydantic import BaseModel
@@ -19,6 +21,14 @@ import zlib
 from itertools import product
 
 import random
+
+from src.observability.metrics import (
+    MODEL_TRAINING_DURATIONS_SEC,
+    DATA_NUMB_TRAIN_USERS,
+    DATA_NUMB_TEST_USERS,
+    DATA_NUMB_TRAIN_INTERACTIONS,
+    DATA_NUMB_TEST_INTERACTIONS
+)
 
 # Init logger
 logger = logging.getLogger(__name__)
@@ -254,7 +264,7 @@ def prepare_data(
     print(f"\nTest data entries before masking: {test_csr.nnz}")
     evaluation_set_mask = (train_counts >= 4) & (test_counts >= 1)
 
-    # Filter evaluation test set -> Only test samples wihich fullfill evaluation_set_mask condition
+    # Filter evaluation test set -> Only test samples which fulfill evaluation_set_mask condition
     # will stay
     test_csr_masked = apply_mask_to_csr(
         csr_matrix=test_csr,
@@ -264,6 +274,12 @@ def prepare_data(
     print(f"Test data entries after masking: {test_csr_masked.nnz}")
     # ratio = evaluation_set_mask.sum() / train_coo.shape[0] * 100
     # print(f"\nTHe evaluation set includes {ratio:.2f} % of the original train/test data.")
+
+    # Track number of train/test users and interactions
+    DATA_NUMB_TRAIN_USERS.set(int(train_csr.shape[0]))
+    DATA_NUMB_TEST_USERS.set(int(test_csr.shape[0]))
+    DATA_NUMB_TRAIN_INTERACTIONS.set(int(train_csr.nnz))
+    DATA_NUMB_TEST_INTERACTIONS.set(int(test_csr.nnz))
 
     return train_csr, test_csr, test_csr_masked, mappings, evaluation_set_mask
 
@@ -761,71 +777,80 @@ def grid_search_advanced(
     all_used_params : list of dict
         Aggregated list of all parameter combinations tested across all three stages.
     '''
-    # List of dict containing actual param used
-    all_used_params = []
+    try:
+        # Get start time in seconds
+        start_time_sec = time.perf_counter()
+        
+        # List of dict containing actual param used
+        all_used_params = []
 
-    # Stage 1: Find K1, B1 starting point
-    baseline = {
-        "factors": 160,
-        "reg": 0.1,
-        "iters": 25
-    }
+        # Stage 1: Find K1, B1 starting point
+        baseline = {
+            "factors": 160,
+            "reg": 0.1,
+            "iters": 25
+        }
 
-    print(f"\nTest data entries after masking: {test_csr.nnz}")
+        print(f"\nTest data entries after masking: {test_csr.nnz}")
 
-    # Grid search with varying K1, B1 values and fixed base line 
-    # Do grid search 
-    _, stage_1_metr, stage_1_param, stage_1_best_idx, actual_params = als_grid_search(
-        train_csr=train_csr, 
-        test_csr=test_csr,
-        bm25_K1_list=bm25_K1_list,
-        bm25_B_list=bm25_B_list,
-        factors_list=[baseline["factors"]],
-        reg_list=[baseline["reg"]],
-        iters_list=[baseline["iters"]],
-        K=K,
-        alpha_list=(1.0,),
-        num_threads=num_threads
-    )
-    all_used_params += actual_params
+        # Grid search with varying K1, B1 values and fixed base line 
+        # Do grid search 
+        _, stage_1_metr, stage_1_param, stage_1_best_idx, actual_params = als_grid_search(
+            train_csr=train_csr, 
+            test_csr=test_csr,
+            bm25_K1_list=bm25_K1_list,
+            bm25_B_list=bm25_B_list,
+            factors_list=[baseline["factors"]],
+            reg_list=[baseline["reg"]],
+            iters_list=[baseline["iters"]],
+            K=K,
+            alpha_list=(1.0,),
+            num_threads=num_threads
+        )
+        all_used_params += actual_params
 
-    # Stage 2: Big area search with fixed K1, B1
-    # Do grid search 
-    _, stage_2_metr, stage_2_param, stage_2_best_idx, actual_params = als_grid_search(
-        train_csr=train_csr, 
-        test_csr=test_csr,
-        bm25_K1_list=[stage_1_param[stage_1_best_idx]["bm25_K1"]],
-        bm25_B_list=[stage_1_param[stage_1_best_idx]["bm25_B"]],
-        factors_list=factors_list,
-        reg_list=reg_list,
-        iters_list=iters_list,
-        K=K,
-        n_samples=n_samples,
-        alpha_list=alpha_list,
-        num_threads=num_threads
-    )
-    all_used_params += actual_params
+        # Stage 2: Big area search with fixed K1, B1
+        # Do grid search 
+        _, stage_2_metr, stage_2_param, stage_2_best_idx, actual_params = als_grid_search(
+            train_csr=train_csr, 
+            test_csr=test_csr,
+            bm25_K1_list=[stage_1_param[stage_1_best_idx]["bm25_K1"]],
+            bm25_B_list=[stage_1_param[stage_1_best_idx]["bm25_B"]],
+            factors_list=factors_list,
+            reg_list=reg_list,
+            iters_list=iters_list,
+            K=K,
+            n_samples=n_samples,
+            alpha_list=alpha_list,
+            num_threads=num_threads
+        )
+        all_used_params += actual_params
 
-    # Stage 3: Fine search near best parameter of stage 2
-    # Define safety factor and reg vals
-    stage_3_factors = [max(1, int(stage_2_param[stage_2_best_idx]["factors"] * perc)) for perc in f_finetune_perc]
-    stage_3_regs = [max(1e-8, stage_2_param[stage_2_best_idx]["reg"] * perc) for perc in r_finetune_perc]
-    best_alpha = stage_2_param[stage_2_best_idx]["alpha"]
+        # Stage 3: Fine search near best parameter of stage 2
+        # Define safety factor and reg vals
+        stage_3_factors = [max(1, int(stage_2_param[stage_2_best_idx]["factors"] * perc)) for perc in f_finetune_perc]
+        stage_3_regs = [max(1e-8, stage_2_param[stage_2_best_idx]["reg"] * perc) for perc in r_finetune_perc]
+        best_alpha = stage_2_param[stage_2_best_idx]["alpha"]
+        
+        # Do grid search 
+        stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx, actual_params = als_grid_search(
+            train_csr=train_csr, 
+            test_csr=test_csr,
+            bm25_K1_list=[stage_2_param[stage_2_best_idx]["bm25_K1"]],
+            bm25_B_list=[stage_2_param[stage_2_best_idx]["bm25_B"]],
+            factors_list=stage_3_factors,
+            reg_list=stage_3_regs,
+            iters_list=[stage_2_param[stage_2_best_idx]["iters"]],
+            K=K,
+            alpha_list=(best_alpha, ),
+            num_threads=num_threads
+        )
+        all_used_params += actual_params
     
-    # Do grid search 
-    stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx, actual_params = als_grid_search(
-        train_csr=train_csr, 
-        test_csr=test_csr,
-        bm25_K1_list=[stage_2_param[stage_2_best_idx]["bm25_K1"]],
-        bm25_B_list=[stage_2_param[stage_2_best_idx]["bm25_B"]],
-        factors_list=stage_3_factors,
-        reg_list=stage_3_regs,
-        iters_list=[stage_2_param[stage_2_best_idx]["iters"]],
-        K=K,
-        alpha_list=(best_alpha, ),
-        num_threads=num_threads
-    )
-    all_used_params += actual_params
+    finally:
+        # Measure duration time in sec
+        time_duration_sec = time.perf_counter() - start_time_sec
+        MODEL_TRAINING_DURATIONS_SEC.observe(time_duration_sec)
 
     return stage_3_model, stage_3_metr, stage_3_param, stage_3_best_idx, all_used_params
 

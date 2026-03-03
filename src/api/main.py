@@ -30,7 +30,7 @@ import pandas as pd
 import zlib
 import mlflow
 
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, make_asgi_app
 
 # Import sql request code
 from src.db.database_session import engine
@@ -52,7 +52,7 @@ from src.models.management import (
     Model_State,
 )
 
-from src.observability.http_metrics import PrometheusHTTPMetricsMiddleware
+from src.observability.metrics import PrometheusHTTPMetricsMiddleware
 
 
 def csr_fingerprint(X) -> str:
@@ -118,6 +118,10 @@ app.include_router(admin.router)
 app.include_router(train.router)
 app.include_router(recommend.router)
 app.include_router(rate_movie.router)
+
+# Cerate prometheus app
+# metrics_app = make_asgi_app()
+# app.mount("/metrics", metrics_app)
 
 
 @app.get("/health", tags=["System"])
