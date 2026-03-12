@@ -73,6 +73,33 @@ services:
       # Environment var for db.
       - ./.env:/app/.env
 
+
+# Add Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus_movie_rec
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+
+
+# Add Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana_movie_rec
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    depends_on:
+      - prometheus
+
+
   # Add streamlit
   streamlit:
     build:
@@ -91,7 +118,6 @@ services:
     volumes:
       - ./streamlit:/app     # mount local streamlit folder inside container at /app
       - ./streamlit_cache:/root/.streamlit/cache # mount local cache folder inside container at /root/.streamlit/cache
-
 
 
   # Scheduled Trainer (daily retraining)
