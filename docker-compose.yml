@@ -80,6 +80,7 @@ services:
     container_name: prometheus_movie_rec
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_storage:/prometheus
     ports:
       - "9090:9090"
     depends_on:
@@ -99,8 +100,9 @@ services:
     depends_on:
       - prometheus
     volumes:
-      - grafana_storage:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
+      - grafana_storage:/var/lib/grafana
+      
 
 
   # Add streamlit
@@ -151,5 +153,5 @@ volumes:
   # Tell docker to create a storage location named pgdata on host system 
   # Storage is automatically created by docker
   pgdata:
+  prometheus_storage:
   grafana_storage:
-

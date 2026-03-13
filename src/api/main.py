@@ -47,6 +47,7 @@ from src.models.management import (
     TRAIN_CSR_STORE,
     MODEL_NAME, 
     get_champion_model,
+    get_model_version,
     client,
     ALSRecommenderPyFunc,
     Model_State,
@@ -90,10 +91,13 @@ async def lifespan(app: FastAPI):
     logger.info(f"Model name is: {MODEL_NAME}")
     try:
         app.state.champion_model = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}@Champion")
+        app.state.champion_model_version = get_model_version(model_name=MODEL_NAME)
         logger.info("[startup] Stored champ model in app.state.champion_model")
+        logger.info("[startup] Stored champ model version in app.state.champion_model_version")
     except Exception as e:
         app.state.champion_model = None
-        logger.exception("[startup] Failed to load champion model from MLflow")
+        app.state.champion_model_version = None
+        logger.exception("[startup] Failed to load champion model or champ model version from MLflow")
     
     yield                                       # app runs while yielded 
     print("[champ-store] App shutting down")    # optional cleanup

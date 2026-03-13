@@ -563,6 +563,15 @@ def _get_run_id_for_version(model_name: str, version: str) -> str | None:
         return None
 
 
+def get_model_version(model_name: str, alias: str = "Champion"):
+    '''Get current model version number of given model alias.'''
+    model_version = client.get_model_version_by_alias(
+        name=model_name,
+        alias=alias,
+    )
+    return model_version.version
+
+
 def _load_champion_params(model_name: str) -> dict | None:
     """
     Tries to fetch hyperparams from Champion:
