@@ -98,6 +98,9 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "false"
     depends_on:
       - prometheus
+    volumes:
+      - grafana_storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
 
 
   # Add streamlit
@@ -147,4 +150,6 @@ services:
 volumes:
   # Tell docker to create a storage location named pgdata on host system 
   # Storage is automatically created by docker
-  pgdata: 
+  pgdata:
+  grafana_storage:
+
