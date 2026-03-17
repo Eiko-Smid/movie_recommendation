@@ -1,11 +1,11 @@
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
 import os
 
-from sqlalchemy import create_engine
+import matplotlib.pyplot as plt
+import pandas as pd
 from dotenv import load_dotenv
+from sqlalchemy import create_engine
 
+import streamlit as st
 
 # Apply global text alignment and formatting
 st.markdown(

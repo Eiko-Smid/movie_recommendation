@@ -1,26 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-
 from sqlalchemy.orm import Session
 
+from src.api.role import UserRole
+from src.api.schemas import (
+    ActiveUserRequest,
+    GetAllUsersResponse,
+    UserResponse,
+    UserRoleRequest,
+)
+from src.api.security import check_user_authorization
 from src.db.database_session import get_db
 from src.db.models.users import User
-from src.api.security import get_current_user, check_user_authorization
-from src.api.role import UserRole
-from src.api.schemas import UserResponse, GetAllUsersResponse, UserRoleRequest, ActiveUserRequest
-
 
 # Define router
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.post(
-        "/get_all_users",
-        response_model=GetAllUsersResponse
-)
+@router.post("/get_all_users", response_model=GetAllUsersResponse)
 def get_all_users(
     db: Session = Depends(get_db),
-    _: User = Depends(check_user_authorization(UserRole.ADMIN))
+    _: User = Depends(check_user_authorization(UserRole.ADMIN)),
 ):
     """
     Returns a list of all users (id, email, is_active, role) in the DB, when the called
@@ -34,15 +33,16 @@ def get_all_users(
     """
     # Search for all users inside DB
     all_users = db.query(User).order_by(User.id.asc()).all()
-    
+
     return GetAllUsersResponse(
-        users= [
+        users=[
             UserResponse(
                 id=user.id,
                 email=user.email,
                 is_active=user.is_active,
                 role=user.role,
-            ) for user in all_users
+            )
+            for user in all_users
         ]
     )
 
@@ -80,22 +80,17 @@ def set_user_role(
     # Raise error if user doesn't exist
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found."
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found."
         )
-    
-    # Update user role 
+
+    # Update user role
     user.role = user_role.role
     db.commit()
     db.refresh(user)
 
     return UserResponse(
-        id=user.id,
-        email=user.email,
-        is_active=user.is_active,
-        role=user.role
+        id=user.id, email=user.email, is_active=user.is_active, role=user.role
     )
-
 
 
 @router.patch(
@@ -104,14 +99,14 @@ def set_user_role(
     tags=["admin"],
 )
 def change_active_state(
-user_id: int,
+    user_id: int,
     active_request: ActiveUserRequest,
     db: Session = Depends(get_db),
-    _ : User = Depends(check_user_authorization(UserRole.ADMIN)),
+    _: User = Depends(check_user_authorization(UserRole.ADMIN)),
 ):
-    '''
+    """
     Update the is_active flag of a specific user.
-    
+
     **Parameters:**\n
     `user_id` (int, path): The unique ID of the user whose is_active status should be updated\n
     `active_request` (ActiveUserRequest):
@@ -127,26 +122,26 @@ user_id: int,
     - `role` (str): The user's role
 
     `Requires:` Admin privileges
-    '''
+    """
     # Check if is active is part of payload. if not -> exception
     is_active = active_request.is_active
     if is_active is None:
         raise HTTPException(status_code=400, detail="Missing field: is_active")
-    
+
     # Check if is_active is bool
     if not isinstance(is_active, bool):
         raise HTTPException(status_code=400, detail="is_active must be boolean.")
-    
+
     # Check if user is registered in DB. If not -> Exception
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-    
+
     # Update user active status
     user.is_active = is_active
     db.commit()
     db.refresh(user)
-    
+
     return UserResponse(
         id=user.id,
         email=user.email,

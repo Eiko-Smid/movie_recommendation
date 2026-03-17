@@ -37,13 +37,12 @@ If a request cannot be matched to a route template:
 from __future__ import annotations
 
 import time
-from typing import Optional, Set
+from typing import Set
 
-from prometheus_client import Counter, Histogram, Gauge
+from prometheus_client import Counter, Gauge, Histogram
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-
 
 # =============================================================================
 # Prometheus metric definitions (created once per Python process)
@@ -89,7 +88,7 @@ DATA_NUMB_TEST_INTERACTIONS = Gauge(
 MODEL_DATA_LOADING_DURATION_SEC = Histogram(
     name="model_data_loading_duration_sec",
     documentation=(
-        "Duration time for loading training ratings data and user ratings data," 
+        "Duration time for loading training ratings data and user ratings data,"
         "combine them and filter them by materialized view."
     ),
 )
@@ -172,6 +171,7 @@ EXCLUDE_TEMPPLATES: Set = {
 # Helper functions
 # =============================================================================
 
+
 def get_endpoint_route(request: Request) -> str:
     """
     Determine endpoint route of endpoint that corresponds to given request.
@@ -199,7 +199,7 @@ def get_endpoint_route(request: Request) -> str:
 
 class PrometheusHTTPMetricsMiddleware(BaseHTTPMiddleware):
     """
-    Middleware that records Prometheus HTTP metrics for every request. Only those calls, 
+    Middleware that records Prometheus HTTP metrics for every request. Only those calls,
     where the routes are known will be tracked, all others will be ignored. That keeps
     the list of metrics clean.
 
@@ -215,7 +215,7 @@ class PrometheusHTTPMetricsMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         """
         This method get's automatically called whenever an HTTP request hits our API.
-        We then receive the HTTP request and call_next http response.  
+        We then receive the HTTP request and call_next http response.
 
         Parameters
         ----------
@@ -229,13 +229,13 @@ class PrometheusHTTPMetricsMiddleware(BaseHTTPMiddleware):
         Response:
             Response returned by downstream endpoint/middleware.
         """
-        # Safe start time when the endpoint got called 
+        # Safe start time when the endpoint got called
         start_time = time.perf_counter()
 
         # Get request method
         method = request.method
 
-        # Increase the current number of requests counter, because request occurred 
+        # Increase the current number of requests counter, because request occurred
         HTTP_REQUESTS_IN_FLIGHT.labels(method).inc()
         # Default status used if an exception occurred.
         status_code_str = "500"
@@ -246,6 +246,12 @@ class PrometheusHTTPMetricsMiddleware(BaseHTTPMiddleware):
             # Extract response status code and return it
             status_code_str = str(response.status_code)
             return response
+
+        except Exception as e:
+            # Track failure explicitly
+            status_code_str = "500"
+            raise e  # re-raise → FastAPI handles it
+
         finally:
             # get the endpoint route corresponding to the request
             route_template = get_endpoint_route(request=request)
@@ -253,23 +259,20 @@ class PrometheusHTTPMetricsMiddleware(BaseHTTPMiddleware):
             # Decrease numb of current active endpoints, cause endpoint is finished
             HTTP_REQUESTS_IN_FLIGHT.labels(method).dec()
 
-            # Check if route template exists, else return 
-            if route_template is None or route_template in EXCLUDE_TEMPPLATES:
-                return response
-            
-            # Measure duration time of endpoint call
-            duration = time.perf_counter() - start_time
+            # Check if route template exists, else return
+            if route_template is not None and route_template not in EXCLUDE_TEMPPLATES:
+                # Measure duration time of endpoint call
+                duration = time.perf_counter() - start_time
 
-            # Save time measurement
-            HTTP_REQUEST_DURATION_SECONDS.labels(
-                method=method,
-                path=route_template,
-            ).observe(duration)
+                # Save time measurement
+                HTTP_REQUEST_DURATION_SECONDS.labels(
+                    method=method,
+                    path=route_template,
+                ).observe(duration)
 
-            # Track total number of endpoint calls. 
-            HTTP_REQUESTS_TOTAL.labels(
-                method=method,
-                path=route_template,
-                status=status_code_str,
-            ).inc()
-            
+                # Track total number of endpoint calls.
+                HTTP_REQUESTS_TOTAL.labels(
+                    method=method,
+                    path=route_template,
+                    status=status_code_str,
+                ).inc()

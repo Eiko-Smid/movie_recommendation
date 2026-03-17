@@ -1,9 +1,9 @@
-import os 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
-from dotenv import load_dotenv 
+import os
 
+from dotenv import load_dotenv
 from fastapi import HTTPException, status
+from sqlalchemy import create_engine
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 
 def get_db_url() -> str:
@@ -12,12 +12,12 @@ def get_db_url() -> str:
     if not DB_URL:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection URL not found in environment variables."
+            detail="Database connection URL not found in environment variables.",
         )
     return DB_URL
 
 
-# Create global DB engine 
+# Create global DB engine
 engine = create_engine(get_db_url(), pool_pre_ping=True)
 
 # Create Session factory
@@ -38,4 +38,3 @@ def get_db():
     finally:
         # Close session on second call
         db.close()
-

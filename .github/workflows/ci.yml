@@ -26,7 +26,7 @@ jobs:
 
     - name: Lint code (ruff)
       run: |
-        ruff check .
+        ruff check src
     
     - name: Run tests (pytest)
       run: |

@@ -848,6 +848,7 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "MY_PROVISIONED_DASHBOARD",
+  "refresh": "5s",
   "uid": "ad49qfm",
   "version": 8,
   "weekStart": ""

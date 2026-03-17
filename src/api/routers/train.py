@@ -1,56 +1,49 @@
-from fastapi import APIRouter, HTTPException, status, Request, Depends
-from pydantic import BaseModel, Field
-from typing import Optional, Sequence, List, Dict, Tuple
-
 import logging
-
 import time
+from typing import Tuple
 
 import pandas as pd
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
+from src.api.role import UserRole
+from src.api.schemas import (
+    BestParameters,
+    TrainRequest,
+    TrainResponse,
+)
+from src.api.security import check_user_authorization
+from src.db.database_session import engine
+from src.db.db_requests import (
+    MV_NAME,
+    _load_full_histories_for_n_users,
+    _load_full_mv_users,
+    refresh_mv,
+)
+from src.db.models.users import User
 from src.models.als_movie_rec import (
     grid_search_advanced,
 )
-from src.db.database_session import engine
-from src.db.db_requests import (
-    refresh_mv,
-    _load_full_histories_for_n_users,
-    _load_full_mv_users,
-    MV_NAME
-) 
-
-from src.api.schemas import (
-    TrainRequest,
-    TrainResponse,
-    BestParameters,
-)
-
 from src.models.management import (
-    prepare_training,
     did_model_improve,
     mlflow_log_run,
-    update_champ_model
+    prepare_training,
+    update_champ_model,
 )
-
-from src.db.models.users import User
-from src.api.security import check_user_authorization
-from src.api.role import UserRole
-
 from src.observability.metrics import (
     MODEL_DATA_LOADING_DURATION_SEC,
-    MODEL_PREC_AT_K,
     MODEL_MAP_AT_K,
+    MODEL_PREC_AT_K,
 )
 
 # Init logger
 logger = logging.getLogger(__name__)
 
 # _________________________________________________________________________________________________________
-# Data loading functionality 
+# Data loading functionality
 # _________________________________________________________________________________________________________
 
 # def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
-#     ''' 
+#     '''
 #     Loads the ratings and movies CSV files into Pandas DataFrames.
 
 #     This function is called at the beginning of the /train endpoint to load
@@ -60,7 +53,7 @@ logger = logging.getLogger(__name__)
 #     Parameters
 #     ----------
 #     train_param: TrainRequest
-    # Training configuration containing 'n_users'.
+# Training configuration containing 'n_users'.
 
 #     Returns
 #     -------
@@ -87,7 +80,7 @@ logger = logging.getLogger(__name__)
 #             status_code=status.HTTP_404_NOT_FOUND,
 #             detail=f"Movies csv file not found. Path is:\n{data_path_movies}"
 #         )
-    
+
 #     # Try to load data
 #     try:
 #         df_ratings = pd.read_csv(data_path_ratings, nrows= n_rows if n_rows > 0 else None)
@@ -97,45 +90,50 @@ logger = logging.getLogger(__name__)
 #             status_code=status.HTTP_400_BAD_REQUEST,
 #             detail=f"Failed to read CSVs: {e}"
 #             )
-    
+
 #     return df_ratings, df_movies
 
-    
+
 def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Load ratings + movies from DB (same logic as before in main).
 
     Uses the materialized view and respects `n_users` semantics.
     """
-    # Track start time 
+    # Track start time
     start_time_sec = time.perf_counter()
 
     n_users = int(train_param.n_users)
 
     try:
-        # Refresh or create MV 
+        # Refresh or create MV
         refresh_mv()
 
         # Set n_users to default value if zero
         if n_users == 0:
             n_users = 500
 
-        with engine.connect() as conn:            
+        with engine.connect() as conn:
             if n_users < 0:
                 # Load all the data of MV
                 logger.info("Training with full MV ('%s') ratings.", MV_NAME)
                 df_ratings = _load_full_mv_users()
             else:
-                # Load n_users data                
+                # Load n_users data
                 df_ratings = _load_full_histories_for_n_users(n_users_target=n_users)
                 logger.info("Training with partial MV ('%s') ratings", MV_NAME)
 
             # Load movies
-            df_movies = pd.read_sql_query('SELECT "movieId", title, genres FROM movies', conn)
+            df_movies = pd.read_sql_query(
+                'SELECT "movieId", title, genres FROM movies', conn
+            )
             logger.info("Loaded movies successfully.")
 
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Failed to load data from database: {e}")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to load data from database: {e}",
+        ) from e
+
     finally:
         time_duration_sec = time.perf_counter() - start_time_sec
         MODEL_DATA_LOADING_DURATION_SEC.observe(time_duration_sec)
@@ -149,32 +147,30 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
 
 router = APIRouter(prefix="/train", tags=["train"])
 
-@router.post(
-        "/refresh-mv"
-)
+
+@router.post("/refresh-mv")
 def refresh_mv_endpoint(
     _: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
-    '''
+    """
     Refreshes the Materialized View (all users > 5 ratings). This is needed such that the
     api train endpoint has access to the newest data which lives inside the materialized view.
     The endpoint should get called to frequently, once a day before training is enough.
-    '''
+    """
     refreshed_concurrently = refresh_mv()
     return {"status": "ok", "concurrent": refreshed_concurrently}
 
 
-
 @router.post(
-        "/train_model",
-        response_model=TrainResponse,
+    "/train_model",
+    response_model=TrainResponse,
 )
 def train_endpoint(
     request: Request,
     train_param: TrainRequest,
     _: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
-    '''
+    """
     Trains or updates the ALS recommendation model using the provided training parameters.
 
     The endpoint:
@@ -197,20 +193,20 @@ def train_endpoint(
     TrainResponse
         Object containing the best hyperparameters 'best_param' and corresponding evaluation
         metrics 'best_metrics' from the training run.
-    '''
+    """
 
     # Load data
     df_ratings, df_movies = _load_data(train_param=train_param)
 
-    # Prepare training 
+    # Prepare training
     (
-    df_ratings,
-    train_csr,
-    test_csr,
-    test_csr_masked,
-    mappings,
-    movie_id_dict,
-    popular_item_ids,
+        df_ratings,
+        train_csr,
+        test_csr,
+        test_csr_masked,
+        mappings,
+        movie_id_dict,
+        popular_item_ids,
     ) = prepare_training(
         df_ratings,
         df_movies,
@@ -228,7 +224,7 @@ def train_endpoint(
         reg_list=train_param.als_parameter.reg_list,
         iters_list=train_param.als_parameter.iters_list,
         n_samples=12,
-        K=train_param.als_parameter.K
+        K=train_param.als_parameter.K,
     )
 
     # Extract best parameters & metrics
@@ -239,12 +235,10 @@ def train_endpoint(
         best_reg=parameter_ls[best_idx]["reg"],
         best_iters=parameter_ls[best_idx]["iters"],
     )
-    
+
     # Check if model has improved compared to current champ model
     improved, champ_model, champ_metrics, champ_params = did_model_improve(
-        train_csr=train_csr,
-        test_csr=test_csr_masked,
-        best_metrics=metrics_ls[best_idx]
+        train_csr=train_csr, test_csr=test_csr_masked, best_metrics=metrics_ls[best_idx]
     )
 
     # Log param. metrics, models
@@ -259,41 +253,39 @@ def train_endpoint(
             best_metrics=champ_metrics,
             train_csr=train_csr,
             popular_item_ids=popular_item_ids,
-            movie_id_dict=movie_id_dict
+            movie_id_dict=movie_id_dict,
         )
     else:
         best_metrics = metrics_ls[best_idx]
         new_version, best_weighted_csr = mlflow_log_run(
-                train_param=train_param,
-                model=model,
-                used_grid_param=used_params,
-                mappings=mappings,
-                best_param=best_param,
-                best_metrics=metrics_ls[best_idx],
-                train_csr=train_csr,
-                popular_item_ids=popular_item_ids,
-                movie_id_dict=movie_id_dict
-            )         
-    
+            train_param=train_param,
+            model=model,
+            used_grid_param=used_params,
+            mappings=mappings,
+            best_param=best_param,
+            best_metrics=metrics_ls[best_idx],
+            train_csr=train_csr,
+            popular_item_ids=popular_item_ids,
+            movie_id_dict=movie_id_dict,
+        )
+
     # Update the champ model
     update_champ_model(
-        app=request.app,
-        new_version=new_version,
-        best_weighted_csr=best_weighted_csr
+        app=request.app, new_version=new_version, best_weighted_csr=best_weighted_csr
     )
 
     # Track best metrics in prometheus
-    # if train_param.als_parameter.K 
-    k_value = train_param.als_parameter.K if hasattr(train_param.als_parameter, "K") else 10
-    MODEL_PREC_AT_K.labels(
-        model_version=str(new_version),
-        K=str(k_value)
-    ).set(float(best_metrics.prec_at_k))
+    # if train_param.als_parameter.K
+    k_value = (
+        train_param.als_parameter.K if hasattr(train_param.als_parameter, "K") else 10
+    )
+    MODEL_PREC_AT_K.labels(model_version=str(new_version), K=str(k_value)).set(
+        float(best_metrics.prec_at_k)
+    )
 
-    MODEL_MAP_AT_K.labels(
-        model_version=str(new_version),
-        K=str(k_value)
-    ).set(float(best_metrics.map_at_k))
+    MODEL_MAP_AT_K.labels(model_version=str(new_version), K=str(k_value)).set(
+        float(best_metrics.map_at_k)
+    )
 
     # Return train response
     return TrainResponse(best_param=best_param, best_metrics=best_metrics)

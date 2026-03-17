@@ -1,15 +1,5 @@
-from sqlalchemy import (
-    Integer,
-    Numeric,
-    BigInteger,
-    ForeignKey
-)
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column,
-    relationship
-)
-from typing import List
+from sqlalchemy import BigInteger, ForeignKey, Integer, Numeric
+from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.database_session import Base
 
@@ -32,25 +22,15 @@ class Rating(Base):
 
     __tablename__ = "ratings"
 
-    userId: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        nullable=False
-    )
+    userId: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
 
     movieId: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("movies.movieId", ondelete="CASCADE"),
         primary_key=True,
-        nullable=False
+        nullable=False,
     )
 
-    rating: Mapped[float] = mapped_column(
-        Numeric(2, 1),
-        nullable=False
-    )
+    rating: Mapped[float] = mapped_column(Numeric(2, 1), nullable=False)
 
-    timestamp: Mapped[int] = mapped_column(
-        BigInteger,
-        nullable=False
-    )
+    timestamp: Mapped[int] = mapped_column(BigInteger, nullable=False)
