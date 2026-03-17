@@ -1,5 +1,6 @@
-import streamlit as st
 import os
+
+import streamlit as st
 
 # Base directory to locate images relative to this script
 base_dir = os.path.dirname(os.path.abspath(__file__))

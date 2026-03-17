@@ -1,32 +1,23 @@
-from fastapi import Request, FastAPI, HTTPException, status, Depends, APIRouter
-from typing import List, Optional, Sequence, Dict, Tuple
+import time
 
 import pandas as pd
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-import time 
-
+from src.api.role import UserRole
 from src.api.schemas import (
     RecommendMovieByIDRequest,
+    RecommendMovieCurrentUserRequest,
     RecommendResponse,
-    RecommendMovieCurrentUserRequest
 )
-
-from src.models.management import (
-    get_champion_model
-)
-
-from src.db.models.users import User
-
-from src.db.db_requests import get_user_id_offset
 from src.api.security import check_user_authorization
-from src.api.role import UserRole
-
+from src.db.db_requests import get_user_id_offset
+from src.db.models.users import User
+from src.models.management import get_champion_model
 from src.observability.metrics import (
+    MODEL_SERVED_TOTAL,
     RECOMMENDATION_REQUEST_COUNT,
     RECOMMENDATION_REQUEST_DURATIONS_SEC,
-    MODEL_SERVED_TOTAL,
 )
-
 
 router = APIRouter(prefix="/recommend", tags=["recommend"])
 
@@ -38,38 +29,44 @@ router = APIRouter(prefix="/recommend", tags=["recommend"])
 def recommend_movie_current_user(
     recom_param: RecommendMovieCurrentUserRequest,
     request: Request,
-    champion_model = Depends(get_champion_model),
-    user: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.USER)),
-):  
+    champion_model=Depends(get_champion_model),
+    user: User = Depends(
+        check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.USER)
+    ),
+):
     try:
         # Track start time
         start_time_sec = time.perf_counter()
 
         if champion_model is None:
             RECOMMENDATION_REQUEST_COUNT.labels(
-                endpoint="recommend_movie_for_current_user",
-                result="failure"
+                endpoint="recommend_movie_for_current_user", result="failure"
             ).inc()
             raise HTTPException(status_code=503, detail="Champion model not loaded yet")
-        
+
         if user.id is None:
             RECOMMENDATION_REQUEST_COUNT.labels(
-                endpoint="recommend_movie_for_current_user",
-                result="failure"
+                endpoint="recommend_movie_for_current_user", result="failure"
             ).inc()
-            raise HTTPException(status_code=503, detail="Logged in user has no user id.")
-        
+            raise HTTPException(
+                status_code=503, detail="Logged in user has no user id."
+            )
+
         user_id_offset = get_user_id_offset()
         user_id = user.id + user_id_offset
-        
-        df = pd.DataFrame([{
-            "user_id": user_id,
-            "n_movies_to_rec": recom_param.n_movies_to_rec,
-            "new_user_interactions": recom_param.new_user_interactions or []
-        }])
-        
+
+        df = pd.DataFrame(
+            [
+                {
+                    "user_id": user_id,
+                    "n_movies_to_rec": recom_param.n_movies_to_rec,
+                    "new_user_interactions": recom_param.new_user_interactions or [],
+                }
+            ]
+        )
+
         # Predict -> Movie recommendations
-        df_movie_rec = champion_model.predict(df) 
+        df_movie_rec = champion_model.predict(df)
 
         # Extract df data
         movie_ids = df_movie_rec.iloc[0]["movie_ids"]
@@ -77,17 +74,15 @@ def recommend_movie_current_user(
         movie_genres = df_movie_rec.iloc[0].get("movie_genres", None) or []
 
         RECOMMENDATION_REQUEST_COUNT.labels(
-            endpoint="recommend_movie_for_current_user",
-            result="success"
+            endpoint="recommend_movie_for_current_user", result="success"
         ).inc()
-    
+
     except Exception:
         RECOMMENDATION_REQUEST_COUNT.labels(
-            endpoint="recommend_movie_for_current_user",
-            result="failure"
+            endpoint="recommend_movie_for_current_user", result="failure"
         ).inc()
         raise
-    
+
     finally:
         # Save duration time
         time_duration_sec = time.perf_counter() - start_time_sec
@@ -102,7 +97,7 @@ def recommend_movie_current_user(
         user_id=(user_id - user_id_offset),
         movie_ids=movie_ids,
         movie_titles=movie_titles,
-        movie_genres=movie_genres
+        movie_genres=movie_genres,
     )
 
 
@@ -112,18 +107,18 @@ def recommend_movie_current_user(
 )
 def recommend_movie_by_id(
     recom_param: RecommendMovieByIDRequest,
-    champion_model = Depends(get_champion_model),
+    champion_model=Depends(get_champion_model),
     _: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER)),
 ):
-    '''
-    Generates a personalized movie recommendation if the given user is part of the matrix 
-    the current champ model was trained with. If thats not the case but some initial 
-    information about the users favorit movies are provided the recommendations are 
-    getting computed on the fly. 
-    If none of both is the case, the user get recommendations based of a list of popular 
+    """
+    Generates a personalized movie recommendation if the given user is part of the matrix
+    the current champ model was trained with. If thats not the case but some initial
+    information about the users favorit movies are provided the recommendations are
+    getting computed on the fly.
+    If none of both is the case, the user get recommendations based of a list of popular
     movies.
-    
-    Attention: If u want recommendations for users in app_ratings, u must manually add the 
+
+    Attention: If u want recommendations for users in app_ratings, u must manually add the
     offset to the user id (get_user_id_offset() == offset).
 
     Parameters
@@ -136,20 +131,24 @@ def recommend_movie_by_id(
     RecommendResponse
         Endpoint returns the user_id, the ids of the recommended movies as well as the
         movie names.
-    '''
+    """
     # Check if Champ model exists, if not raise Exception
     if champion_model is None:
         raise HTTPException(status_code=503, detail="Champion model not loaded yet")
-    
+
     # Put request into df (Specified by MLFLow that model_input needs to be df or numpy.ndarray)
-    df = pd.DataFrame([{
-        "user_id": recom_param.user_id,
-        "n_movies_to_rec": recom_param.n_movies_to_rec,
-        "new_user_interactions": recom_param.new_user_interactions or []
-    }])
+    df = pd.DataFrame(
+        [
+            {
+                "user_id": recom_param.user_id,
+                "n_movies_to_rec": recom_param.n_movies_to_rec,
+                "new_user_interactions": recom_param.new_user_interactions or [],
+            }
+        ]
+    )
 
     # Predict -> Movie recommendations
-    df_movie_rec = champion_model.predict(df) 
+    df_movie_rec = champion_model.predict(df)
 
     # Extract df data
     movie_ids = df_movie_rec.iloc[0]["movie_ids"]
@@ -160,5 +159,5 @@ def recommend_movie_by_id(
         user_id=recom_param.user_id,
         movie_ids=movie_ids,
         movie_titles=movie_titles,
-        movie_genres=movie_genres
+        movie_genres=movie_genres,
     )

@@ -1,5 +1,6 @@
-import streamlit as st
 import pandas as pd
+
+import streamlit as st
 
 # Apply global text alignment and formatting
 st.markdown(

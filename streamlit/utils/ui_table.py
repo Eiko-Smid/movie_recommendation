@@ -1,11 +1,13 @@
 # utils/ui_table.py
 from __future__ import annotations
+
 from math import ceil
-from typing import Iterable, Optional, Union
+from typing import Iterable, Optional
 
 import pandas as pd
-import streamlit as st
 from streamlit.delta_generator import DeltaGenerator
+
+import streamlit as st
 
 
 def render_table(

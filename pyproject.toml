@@ -1,0 +1,27 @@
+[tool.ruff]
+# General settings
+line-length = 88
+target-version = "py311"
+# Exclude streamlit from general settings
+exclude = [
+    "streamlit/",
+]
+
+[tool.ruff.lint]
+# Enable important rule groups
+select = ["E", "F", "I", "B"]
+
+# Ignore line length (handled by formatter / not worth enforcing strictly)
+ignore = ["E501"]
+
+dummy-variable-rgx = "^_.*"
+
+[tool.ruff.format]
+line-ending = "auto"                    # Automatically split lines into parts if they exceed the line length limit
+exclude = ["streamlit/"]                # Exclud streamlit to ensure correct streamlit formatting
+
+# Special handling for specific files (VERY IMPORTANT)
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]                # allow re-exports
+"src/api/routers/*.py" = ["B008"]       # Enable FastAPI Depends()
+"src/api/security.py" = ["B008"]        # Enable FastAPI Depends()
