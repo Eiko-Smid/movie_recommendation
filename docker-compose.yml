@@ -76,7 +76,7 @@ services:
 
 # Add Prometheus
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.10.0
     container_name: prometheus_movie_rec
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
@@ -89,7 +89,7 @@ services:
 
 # Add Grafana
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.4.0
     container_name: grafana_movie_rec
     ports:
       - "3000:3000"
@@ -101,6 +101,7 @@ services:
       - prometheus
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/provisioning/dashboards:/var/lib/grafana/dashboards
       - grafana_storage:/var/lib/grafana
       
 

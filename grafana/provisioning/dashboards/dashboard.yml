@@ -1,0 +1,13 @@
+# This file tells Grafana to automatically load dashboards from a folder
+apiVersion: 1
+
+providers:
+  - name: "default"               # Name of the dashboard provider
+    orgId: 1                      # Default Grafana org
+    folder: ""                    # Folder in Grafana UI (empty = General)
+    type: file                    # Load dashboards from files
+    disableDeletion: false        # Allow removing dashboards
+    updateIntervalSeconds: 10     # How often Grafana checks for changes
+
+    options:
+      path: /var/lib/grafana/dashboards   # Path inside container

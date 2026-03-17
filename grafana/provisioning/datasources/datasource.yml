@@ -1,0 +1,10 @@
+# Defines data sources for Grafana (here: Prometheus)
+apiVersion: 1
+
+datasources:
+  - name: Prometheus               # Name shown in Grafana UI
+    type: prometheus               # Data source type
+    access: proxy                  # Grafana connects internally via backend
+    url: http://prometheus:9090    # Docker service name + port
+    isDefault: true                # Make it the default data source
+    editable: true                 # Allow changes via UI (optional)
