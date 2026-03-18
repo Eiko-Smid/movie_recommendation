@@ -29,8 +29,11 @@ jobs:
         ruff check src
     
     - name: Run tests (pytest)
+      env:
+        TESTING: "true"
+#        DATABASE_URL: sqlite:///./test.db
       run: |
-        pytest
+        pytest -v -s
     
     - name: Build Docker Images
       run: |
