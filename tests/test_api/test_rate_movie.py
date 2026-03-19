@@ -157,7 +157,7 @@ def test_rate_movie_types_and_roles(client: TestClient):
     assert isinstance(data["movie_id"],int)
     assert isinstance(data["user_id"], int)
     assert isinstance(data["rating"], float)
-    assert isinstance(data["timestamp"], str)
+    assert isinstance(data["timestamp"], int)
 
 
 def test_rate_movie_inactive_admin(client: TestClient):
