@@ -19,7 +19,6 @@ from src.observability.metrics import (
     RECOMMENDATION_REQUEST_DURATIONS_SEC,
 )
 
-
 router = APIRouter(prefix="/recommend", tags=["recommend"])
 
 
