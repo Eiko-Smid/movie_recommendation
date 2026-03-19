@@ -17,7 +17,8 @@ from src.api.role import UserRole
 from tests.utils.db_test_user import (
     ADMIN_USER,
     DEV_USER,
-    USER_USER
+    USER_USER,
+    INACTIVE_ADMIN_USER
 )
 
 from tests.utils.db_test_ratings import (
@@ -49,7 +50,7 @@ def setup_test_db():
     db = TestingSessionLocal()
 
     # Add test userdata to DB
-    db.add_all([ADMIN_USER, DEV_USER, USER_USER])
+    db.add_all([ADMIN_USER, DEV_USER, USER_USER, INACTIVE_ADMIN_USER])
 
     # Add test ratings to DB
     db.add_all([RATE_MOV_1, RATE_MOV_2, RATE_MOV_3])

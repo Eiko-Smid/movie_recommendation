@@ -28,3 +28,12 @@ USER_USER = User(
     is_active=True,
     role=UserRole.USER,
 )
+
+
+INACTIVE_ADMIN_USER = User(
+    id=99,
+    email="inactive_admin@test.com",
+    hashed_password=hash_password("inactiveadmin"),
+    is_active=False,
+    role=UserRole.ADMIN,
+)

@@ -2,7 +2,7 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [main, develop, optimize_dashboard]
+    branches: 
   pull_request:
 
 jobs:
@@ -31,10 +31,9 @@ jobs:
     - name: Run tests (pytest)
       env:
         TESTING: "true"
-#        DATABASE_URL: sqlite:///./test.db
+        DB_URL: sqlite:///./test.db
       run: |
         pytest -v -s
-    
     - name: Build Docker Images
       run: |
         docker build -f Dockerfile.api -t movie-reco-api .
