@@ -19,9 +19,8 @@ from src.db.models.users import User
 from src.db.models.ratings import Rating
 from src.db.models.movies import Movie
 from src.db.database_session import get_db
-from src.db.db_requests import get_user_id_offset
+from src.db.db_requests import get_user_id_offset, refresh_mv
 
-from src.api.security import hash_password
 from src.api.role import UserRole
 
 from src.models.management import get_champion_model
@@ -152,17 +151,23 @@ def override_user_id_offset():
     return user_id_offset
 
 
+def override_refresh_mv():
+    '''
+    Simulates the refresh_mv function, but this one does nothing. 
+    '''
+    return True
+
+
 @pytest.fixture
 def client():
     # Overwrite fuction dependencies with test versions
     app.dependency_overrides[get_db] = override_get_db
     # app.dependency_overrides[get_champion_model] = override_get_champion_model
     app.dependency_overrides[get_user_id_offset] = override_user_id_offset
+    app.dependency_overrides[refresh_mv] = override_refresh_mv
 
     # Override app.state
     app.state.champion_model_version = "test_version"
     app.state.champion_model = DummyModel()
 
     return TestClient(app)
-
-

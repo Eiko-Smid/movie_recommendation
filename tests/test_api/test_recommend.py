@@ -15,8 +15,11 @@ from tests.utils.get_authentication_head import(
     get_admin_auth_head,
     get_dev_auth_head,
     get_user_auth_head,
-    get_inactive_admin_auth_head,
 )
+
+#____________________________________________________________________________________________________
+# Integration tests for /recommend/recommend_movie_for_current_user endpoint
+#____________________________________________________________________________________________________
 
 
 @pytest.mark.parametrize(
@@ -151,6 +154,11 @@ def test_recommend_movie_for_current_user_invalid_payload(
 
     # Check that response status code is 422 Unprocessable Entity when payload is invalid
     assert response.status_code == expected_status
+
+
+#____________________________________________________________________________________________________
+# Integration tests for /recommend/recommend_movie_by_id endpoint
+#____________________________________________________________________________________________________
 
 
 @pytest.mark.parametrize(
@@ -294,3 +302,4 @@ def test_recommend_movie_by_id_invalid_payload(
 
     # Check expected status for each payload scenario
     assert response.status_code == expected_status
+

@@ -151,13 +151,13 @@ router = APIRouter(prefix="/train", tags=["train"])
 @router.post("/refresh-mv")
 def refresh_mv_endpoint(
     _: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER)),
+    refreshed_concurrently=Depends(refresh_mv),
 ):
     """
     Refreshes the Materialized View (all users > 5 ratings). This is needed such that the
     api train endpoint has access to the newest data which lives inside the materialized view.
     The endpoint should get called to frequently, once a day before training is enough.
     """
-    refreshed_concurrently = refresh_mv()
     return {"status": "ok", "concurrent": refreshed_concurrently}
 
 
