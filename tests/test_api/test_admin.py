@@ -47,7 +47,7 @@ def get_admin_auth_head(client: TestClient) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def get_dev_auth_head(client: TestClient):
+def get_dev_auth_head(client: TestClient) -> dict:
     """
     Helper function to obtain developer authentication headers for API requests.
     Logs in as developer and returns the Authorization header with Bearer token.
@@ -122,6 +122,7 @@ def test_get_all_users_access(client: TestClient, role, expected_status) -> None
         headers = get_dev_auth_head(client)
     elif role == UserRole.USER:
         headers = get_user_auth_head(client)
+
     # call endpoint with corresponding authorization
     response = client.post(
         url="/admin/get_all_users",
@@ -137,8 +138,10 @@ def test_get_all_users_types_and_roles(client: TestClient) -> None:
     Test that all returned users have correct field types and roles.
     Asserts that each user dict has the correct types for id, email, is_active, and role.
     """
-    # Get admin token and call endpoint
+    # Get admin token
     headers = get_admin_auth_head(client)
+
+    # Call endpoint with corresponding authorization
     response = client.post(
         url="/admin/get_all_users",
         headers=headers,
@@ -159,11 +162,16 @@ def test_get_all_users_by_inactive_admin(client: TestClient) -> None:
     Test that an inactive admin cannot access the get_all_users endpoint.
     Asserts that /admin/get_all_users returns 401 for an inactive admin.
     """
+    # Get token for inactive admin
     headers = get_inactive_admin_auth_head(client)
+
+    # Call endpoint with corresponding authorization
     response = client.post(
         url="/admin/get_all_users",
         headers=headers,
     )
+
+    # Check that the request is unauthorized for an inactive admin
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
@@ -192,8 +200,10 @@ def test_set_user_role_access(client: TestClient, role, expected_status) -> None
     elif role == UserRole.USER:
         headers = get_user_auth_head(client)
 
-    # Call endpoint to change user role to developer
+    # Define payload
     payload = UserRoleRequest(role=UserRole.DEVELOPER).model_dump()
+
+    # Call endpoint to change user role to developer
     response = client.patch(
         url=f"/admin/users/{USER_ID}/role",
         json=payload,
@@ -211,7 +221,11 @@ def test_set_user_role_types_and_roles(client: TestClient) -> None:
     """
     # Get admin token and call endpoint to change role
     headers = get_admin_auth_head(client)
+
+    # Define payload
     payload = UserRoleRequest(role=UserRole.USER).model_dump()
+
+    # Call endpoint to change user role to user
     response = client.patch(
         url=f"/admin/users/{USER_ID}/role",
         json=payload,
@@ -231,13 +245,19 @@ def test_set_user_role_by_inactive_admin(client: TestClient) -> None:
     Test that an inactive admin cannot change a user's role.
     Asserts that /admin/users/{user_id}/role returns 401 for an inactive admin.
     """
+    # Get token for inactive admin
     headers = get_inactive_admin_auth_head(client)
+
+    # Define payload
     payload = UserRoleRequest(role=UserRole.DEVELOPER).model_dump()
+
+    # Call endpoint to change user role to developer
     response = client.patch(
         url=f"/admin/users/{USER_ID}/role",
         json=payload,
         headers=headers,
     )
+    # Check that the request is unauthorized for an inactive admin
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
@@ -266,8 +286,10 @@ def test_set_is_active_access(client: TestClient, role, expected_status) -> None
     elif role == UserRole.USER:
         headers = get_user_auth_head(client)
 
-    # Call endpoint to update active state of user with id "USER_ID"
+    # Define payload
     payload = ActiveUserRequest(is_active=True).model_dump()
+
+    # Call endpoint to update active state of user with id "USER_ID"
     response = client.patch(
         url=f"/admin/users/{USER_ID}/is_active",
         json=payload,
@@ -285,7 +307,11 @@ def test_set_user_active_types_and_roles(client: TestClient) -> None:
     """
     # Get admin token and call endpoint to change active status
     headers = get_admin_auth_head(client)
+
+    # Define payload
     payload = ActiveUserRequest(is_active=True).model_dump()
+
+    # Call endpoint to change user active status to true
     response = client.patch(
         url=f"/admin/users/{USER_ID}/is_active",
         json=payload,
@@ -305,12 +331,19 @@ def test_set_user_active_by_inactive_admin(client: TestClient) -> None:
     Test that an inactive admin cannot change a user's active status.
     Asserts that /admin/users/{user_id}/is_active returns 401 for an inactive admin.
     """
+    # Get token for inactive admin
     headers = get_inactive_admin_auth_head(client)
+
+    # Define payload
     payload = ActiveUserRequest(is_active=True).model_dump()
+
+    # Call endpoint to change user active status to true
     response = client.patch(
         url=f"/admin/users/{USER_ID}/is_active",
         json=payload,
         headers=headers,
     )
+
+    # Check that the request is unauthorized for an inactive admin
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 

@@ -52,16 +52,17 @@ def rate_movie(
     )
 
     try:
-        # Send command to sql
+        # Update DB with new rating, if user has already rated movie, update rating and timestamp
         db.execute(stmt)
         db.commit()
     except IntegrityError as e:
+        # Rollback transaction and raise HTTPException for database constraint violation 
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "Failed to save rating due to a database constraint violation. "
-                "The referenced movie may not exist or the data is invalid. "
+                "The referenced user may not exist or the data is invalid. "
                 "Please verify the movie_id and rating value."
             ),
         ) from e
