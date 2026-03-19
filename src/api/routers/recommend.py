@@ -19,6 +19,7 @@ from src.observability.metrics import (
     RECOMMENDATION_REQUEST_DURATIONS_SEC,
 )
 
+
 router = APIRouter(prefix="/recommend", tags=["recommend"])
 
 
@@ -38,12 +39,14 @@ def recommend_movie_current_user(
         # Track start time
         start_time_sec = time.perf_counter()
 
+        # Raise exception if champion model is not loaded yet 
         if champion_model is None:
             RECOMMENDATION_REQUEST_COUNT.labels(
                 endpoint="recommend_movie_for_current_user", result="failure"
             ).inc()
             raise HTTPException(status_code=503, detail="Champion model not loaded yet")
 
+        # Raise exception if user has no id 
         if user.id is None:
             RECOMMENDATION_REQUEST_COUNT.labels(
                 endpoint="recommend_movie_for_current_user", result="failure"

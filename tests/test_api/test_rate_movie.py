@@ -25,6 +25,10 @@ from tests.utils.get_authentication_head import (
     ],
 )
 def test_rate_movie_user_access(client: TestClient, role, expected_status):
+    """
+    Test that users with different roles (admin, developer, user) can rate a movie.
+    Asserts that /update_DB/rate_movie returns the expected status for each role.
+    """
     # Get token -> header
     if role == UserRole.ADMIN:
         header = get_admin_auth_head(client)
@@ -50,6 +54,10 @@ def test_rate_movie_user_access(client: TestClient, role, expected_status):
 
 
 def test_rate_movie_types_and_roles(client: TestClient):
+    """
+    Test that the rate_movie endpoint returns correct field types and values.
+    Asserts that the response has correct types for message, movie_id, user_id, rating, and timestamp.
+    """
     # Get token for admin user
     header = get_admin_auth_head(client)
 
@@ -76,6 +84,10 @@ def test_rate_movie_types_and_roles(client: TestClient):
 
 
 def test_rate_movie_inactive_admin(client: TestClient):
+    """
+    Test that an inactive admin cannot rate a movie.
+    Asserts that /update_DB/rate_movie returns 401 for an inactive admin.
+    """
     # Get token for inactive admin user
     header = get_inactive_admin_auth_head(client)
 
@@ -105,6 +117,10 @@ def test_rate_movie_inactive_admin(client: TestClient):
     ],
 )
 def test_rate_movie_invalid_payload(client: TestClient, movie_id, rating, expected_status):
+    """
+    Test that invalid payloads are rejected by the rate_movie endpoint.
+    Asserts that /update_DB/rate_movie returns the correct error status for invalid movie_id or rating values.
+    """
     # Get token for admin user
     header = get_admin_auth_head(client)
 
