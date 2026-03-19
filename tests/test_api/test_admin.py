@@ -19,6 +19,12 @@ USER_EMAIL = "user@test.com"
 USER_PWD = "user"
 USER_ID = 3
 
+# Define inactive admin test data
+INACTIVE_ADMIN_EMAIL = "inactive_admin@test.com"
+INACTIVE_ADMIN_PWD = "inactiveadmin"
+INACTIVE_ADMIN_ID = 99
+
+
 #____________________________________________________________________________________________________
 # Helpers
 #____________________________________________________________________________________________________
@@ -84,7 +90,7 @@ def get_inactive_admin_auth_head(client: TestClient) -> dict:
     """
     response = client.post(
         "/auth/token",
-        data={"username": "inactive_admin@test.com", "password": "inactiveadmin"},
+        data={"username": INACTIVE_ADMIN_EMAIL, "password": INACTIVE_ADMIN_PWD},
     )
     # Should still get a token if login is allowed, but endpoints should reject
     assert response.status_code == status.HTTP_200_OK
