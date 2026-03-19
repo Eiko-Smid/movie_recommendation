@@ -22,7 +22,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements-dev.txt
-        pip install pytest ruff
+        pip install pytest pytest-cov ruff
 
     - name: Lint code (ruff)
       run: |
@@ -33,7 +33,7 @@ jobs:
         TESTING: "true"
         DB_URL: sqlite:///./test.db
       run: |
-        pytest -v -s
+        pytest --cov=src --cov-report=term-missing --cov-fail-under=60 -v
     - name: Build Docker Images
       run: |
         docker build -f Dockerfile.api -t movie-reco-api .
@@ -44,3 +44,4 @@ jobs:
     #     sleep 5
     #     curl http://localhost:8000/ || exit 1
 
+  # pytest -v -s
