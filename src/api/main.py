@@ -136,7 +136,8 @@ def health_check(
         db_status_msg = "DB connection healthy."
     except Exception as e:
         db_status = False
-        db_status_msg = str(e)
+        db_status_msg = "DB connection failed."
+        logger.error(f"DB health echeck failed: {e}")
 
     # Try get mlfow tracking uri from env
     try:
@@ -148,7 +149,8 @@ def health_check(
         # If env var is not set, set mlflow status to unhealthy and capture error message
         mlflow_tracking_uri = None
         mlflow_status = False
-        mlflow_status_msg = str(e)
+        mlflow_status_msg = "No mlfow tracking uri found in env vars. Check if exists and if name is correct."
+        logger.error("No mlfow tracking uri found: {e}")
 
     # Test MLflow connection
     if mlflow_tracking_uri:
@@ -163,7 +165,8 @@ def health_check(
         except Exception as e:
             # If request fails, set mlflow status to unhealthy and capture error message
             mlflow_status = False
-            mlflow_status_msg = str(e)
+            mlflow_status_msg = "Mlfow connection couldn't be established."
+            logger.error("No mlflow connection: {e}")
 
     # Check overall health
     healthy = db_status and mlflow_status 
