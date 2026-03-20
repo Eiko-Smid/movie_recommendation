@@ -2,7 +2,7 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [main, develop, optimize_dashboard]
+    branches: 
   pull_request:
 
 jobs:
@@ -22,16 +22,18 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements-dev.txt
-        pip install pytest ruff
+        pip install pytest pytest-cov ruff
 
     - name: Lint code (ruff)
       run: |
         ruff check src
     
     - name: Run tests (pytest)
+      env:
+        TESTING: "true"
+        DB_URL: sqlite:///./test.db
       run: |
-        pytest
-    
+        pytest --cov=src --cov-report=term-missing --cov-fail-under=40 -v
     - name: Build Docker Images
       run: |
         docker build -f Dockerfile.api -t movie-reco-api .
@@ -42,3 +44,4 @@ jobs:
     #     sleep 5
     #     curl http://localhost:8000/ || exit 1
 
+  # pytest -v -s

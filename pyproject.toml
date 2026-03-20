@@ -25,3 +25,4 @@ exclude = ["streamlit/"]                # Exclud streamlit to ensure correct str
 "__init__.py" = ["F401"]                # allow re-exports
 "src/api/routers/*.py" = ["B008"]       # Enable FastAPI Depends()
 "src/api/security.py" = ["B008"]        # Enable FastAPI Depends()
+"src/api/main.py" = ["B008"]        # Enable FastAPI Depends()

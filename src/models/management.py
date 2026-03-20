@@ -46,12 +46,11 @@ MODEL_NAME = os.getenv("MODEL_NAME", "als_model_versioning")
 
 USE_ALIASES = True  # True = prefer aliases (Champion). False = use stages (Production).
 
-mlflow.set_tracking_uri(TRACKING_URI)
-mlflow.set_experiment(EXPERIMENT)
-
-# CHAMP_MODEL: Optional[mlflow.pyfunc.PyFuncModel] = None
-
-client = MlflowClient()
+# Only init mlflow if we are not in testmode (pytest)
+if os.getenv("TESTING", "false") != "true":
+    mlflow.set_tracking_uri(TRACKING_URI)
+    mlflow.set_experiment(EXPERIMENT)
+    client = MlflowClient()
 
 logger = logging.getLogger(__name__)
 

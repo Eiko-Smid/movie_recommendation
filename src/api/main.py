@@ -14,21 +14,20 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import zlib
 from contextlib import asynccontextmanager
-from datetime import datetime
 
 import numpy as np
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 import mlflow
 from src.api.routers import admin, auth, rate_movie, recommend, train
 from src.api.security import init_authorization
 
 # Import sql request code
-from src.db.database_session import engine
+from src.db.database_session import get_db
 from src.models.management import (
     MODEL_NAME,
     TRAIN_CSR_STORE,
@@ -114,53 +113,75 @@ app.include_router(rate_movie.router)
 
 
 @app.get("/health", tags=["System"])
-def health_check():
+def health_check(db: Session = Depends(get_db)):
     """
-    Lightweight healthcheck endpoint.
+    Lightweight health-check endpoint.
     Verifies connectivity to both the database and MLflow server.
-    Returns 200 OK if both are reachable, else 500.
     """
-    load_dotenv()
-    DB_URL = os.getenv("DB_URL")
-    MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")
-    if not DB_URL:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database connection URL not found in environment variables.",
-        )
-    status_report = {"timestamp": datetime.utcnow().isoformat()}
+    # Define status vals and msgs
+    db_status = False
+    db_status_msg = ""
+    mlflow_status = False
+    mlflow_status_msg = ""
 
-    # ✅ Check database connectivity
-    if not DB_URL:
-        status_report["database"] = "missing DB_URL env var"
+    # Test DB connection
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        status_report["database"] = "reachable"
+        # Get first element
+        db.execute(text("SELECT 1")).scalar()
+        db_status = True
+        db_status_msg = "DB connection healthy."
     except Exception as e:
-        status_report["database"] = f"unreachable ({str(e)})"
+        db_status = False
+        db_status_msg = "DB connection failed."
+        logger.error(f"DB health echeck failed: {e}")
 
-    # ✅ Check MLflow connectivity
-    if not MLFLOW_TRACKING_URI:
-        status_report["mlflow"] = "missing MLFLOW_TRACKING_URI env var"
+    # Try get mlfow tracking uri from env
     try:
-        mlflow_health_url = MLFLOW_TRACKING_URI.rstrip("/")
-        response = requests.get(mlflow_health_url, timeout=5)
-        if response.status_code == 200:
-            status_report["mlflow"] = "reachable"
-        else:
-            status_report["mlflow"] = f"error ({response.status_code})"
+        # Get mlflow tracking uri from env, if not set raise exception
+        mlflow_tracking_uri = os.getenv("MLFLOW_TRACKING_URI")
+        if not mlflow_tracking_uri:
+            raise ValueError("MLFLOW_TRACKING_URI not set")
     except Exception as e:
-        status_report["mlflow"] = f"unreachable ({str(e)})"
+        # If env var is not set, set mlflow status to unhealthy and capture error message
+        mlflow_tracking_uri = None
+        mlflow_status = False
+        mlflow_status_msg = "No mlfow tracking uri found in env vars. Check if exists and if name is correct."
+        logger.error(f"No mlfow tracking uri found: {e}")
 
-    # ✅ Return aggregated report
-    if (
-        status_report.get("database") == "reachable"
-        and status_report.get("mlflow") == "reachable"
-    ):
-        return status_report
-    else:
-        raise HTTPException(status_code=500, detail=status_report)
+    # Test MLflow connection
+    if mlflow_tracking_uri:
+        try:
+            # Request mlflow server
+            mlflow_url = mlflow_tracking_uri.rstrip("/")
+            response = requests.get(mlflow_url, timeout=2)
+            response.raise_for_status()
+            # If request is successful, set mlflow status to healthy
+            mlflow_status = True
+            mlflow_status_msg = "MLflow connection healthy."
+        except Exception as e:
+            # If request fails, set mlflow status to unhealthy and capture error message
+            mlflow_status = False
+            mlflow_status_msg = "Mlfow connection couldn't be established."
+            logger.error(f"No mlflow connection: {e}")
+
+    # Check overall health
+    healthy = db_status and mlflow_status
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK
+        if healthy
+        else status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "DB": {
+                "ok": db_status,
+                "message": db_status_msg,
+            },
+            "MLflow": {
+                "ok": mlflow_status,
+                "message": mlflow_status_msg,
+            },
+        },
+    )
 
 
 @app.exception_handler(ValueError)
