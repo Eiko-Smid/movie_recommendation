@@ -1,15 +1,15 @@
-from fastapi import status
-from fastapi.testclient import TestClient
 import pytest
 import requests
+from fastapi import status
+from fastapi.testclient import TestClient
 
-from src.api.role import UserRole
 from src.api.main import app
 from src.db.database_session import get_db
 
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 # Integration tests for /health
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
+
 
 def test_health_endpoint_access(client: TestClient, monkeypatch):
     """
@@ -24,8 +24,9 @@ def test_health_endpoint_access(client: TestClient, monkeypatch):
         class MockResponse:
             def raise_for_status(self):
                 pass  # Simulate a successful response (status code 200)
+
         return MockResponse()
-    
+
     # Override request with mock request to simulate mlflow server being up
     # Only active during this test function, does not affect other tests
     monkeypatch.setattr("requests.get", mock_requests_get)
@@ -50,8 +51,9 @@ def test_health_endpoint_types_and_vals(client: TestClient, monkeypatch):
         class MockResponse:
             def raise_for_status(self):
                 pass  # Simulate a successful response (status code 200)
+
         return MockResponse()
-    
+
     # Override request with mock request to simulate mlflow server being up
     # Only active during this test function, does not affect other tests
     monkeypatch.setattr("requests.get", mock_requests_get)
@@ -63,7 +65,7 @@ def test_health_endpoint_types_and_vals(client: TestClient, monkeypatch):
     assert response.status_code == status.HTTP_200_OK
 
     # Extract data
-    data:dict = response.json()
+    data: dict = response.json()
     db_status = data.get("DB")["ok"]
     db_status_msg = data.get("DB")["message"]
     mlflow_status = data.get("MLflow")["ok"]
@@ -83,12 +85,12 @@ def test_health_endpoint_types_and_vals(client: TestClient, monkeypatch):
 
 
 @pytest.mark.parametrize(
-        "variant, expected_status",
-        [
-            ("NO DB", status.HTTP_500_INTERNAL_SERVER_ERROR),
-            ("NO Tracking URI", status.HTTP_500_INTERNAL_SERVER_ERROR),
-            ("No MLflow Server", status.HTTP_500_INTERNAL_SERVER_ERROR),
-        ],
+    "variant, expected_status",
+    [
+        ("NO DB", status.HTTP_500_INTERNAL_SERVER_ERROR),
+        ("NO Tracking URI", status.HTTP_500_INTERNAL_SERVER_ERROR),
+        ("No MLflow Server", status.HTTP_500_INTERNAL_SERVER_ERROR),
+    ],
 )
 def test_health_failure(client: TestClient, monkeypatch, variant, expected_status):
     """
@@ -103,8 +105,9 @@ def test_health_failure(client: TestClient, monkeypatch, variant, expected_statu
         class MockResponse:
             def raise_for_status(self):
                 pass  # Simulate a successful response (status code 200)
+
         return MockResponse()
-    
+
     # Override request with mock request to simulate mlflow server being up
     # Only active during this test function, does not affect other tests
     monkeypatch.setattr("requests.get", mock_requests_get)
@@ -115,7 +118,7 @@ def test_health_failure(client: TestClient, monkeypatch, variant, expected_statu
         class DB:
             def execute(self, *args, **kwargs):
                 raise Exception("DB connection failed.")
-            
+
         def fake_get_db():
             yield DB()
 
@@ -127,7 +130,7 @@ def test_health_failure(client: TestClient, monkeypatch, variant, expected_statu
         monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
     elif variant == "No MLflow Server":
-        # Simulate mlflow server down 
+        # Simulate mlflow server down
         def mock_requests_get_failure(*args, **kwargs):
             raise requests.ConnectionError("MLflow server unavailable.")
 

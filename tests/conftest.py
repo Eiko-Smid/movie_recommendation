@@ -1,47 +1,25 @@
 import os
+
+import pandas as pd
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 # Create DB URL for pytest -> Ensures sqlight DB is used instead of postgreSQL DB
 TEST_DATABASE_URL = "sqlite:///./test.db"
 os.environ["DB_URL"] = TEST_DATABASE_URL
 
-import pytest
-from fastapi.testclient import TestClient
-
-from typing import Optional
-
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-import pandas as pd
-
 from src.api.main import app
-from src.db.database_session import Base
-from src.db.models.users import User
-from src.db.models.ratings import Rating
-from src.db.models.movies import Movie
-from src.db.database_session import get_db
+from src.db.database_session import Base, get_db
 from src.db.db_requests import get_user_id_offset, refresh_mv
-
-from src.api.role import UserRole
-
-from src.models.management import get_champion_model
-
+from tests.utils.db_test_movies import MOVIE_1, MOVIE_2, MOVIE_3
+from tests.utils.db_test_ratings import RATE_MOV_1, RATE_MOV_2, RATE_MOV_3
 from tests.utils.db_test_user import (
     ADMIN_USER,
     DEV_USER,
+    INACTIVE_ADMIN_USER,
     USER_USER,
-    INACTIVE_ADMIN_USER
-)
-
-from tests.utils.db_test_ratings import (
-    RATE_MOV_1,
-    RATE_MOV_2,
-    RATE_MOV_3
-)
-
-from tests.utils.db_test_movies import (
-    MOVIE_1,
-    MOVIE_2,
-    MOVIE_3
 )
 
 # Create db connection
@@ -51,9 +29,9 @@ TestingSessionLocal = sessionmaker(bind=engine)
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
-    '''
+    """
     Create test db for testing api endpoints.
-    '''
+    """
     # Create schema
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
@@ -72,19 +50,19 @@ def setup_test_db():
 
     yield
 
-    # CLean everything 
+    # CLean everything
     Base.metadata.drop_all(bind=engine)
 
 
+class DummyModel:
+    """
+    Class to simulate a trained model that returns movie recommendations.
+    """
 
-class DummyModel():
-    '''
-    Class to simulate a trained model that returns movie recommendations. 
-    '''
     def predict(self, model_input: pd.DataFrame):
-        '''
+        """
         Get's the model input and returns a data frame consisting of dummy data. Imitates
-        the real model.predict method. 
+        the real model.predict method.
 
         Parameters
         ----------
@@ -100,7 +78,7 @@ class DummyModel():
             A DataFrame with columns:
             - movie_ids: list[int]
             - movie_titles: list[str]
-        '''
+        """
         movie_ids = []
         movie_titles = []
         movie_genres = []
@@ -126,7 +104,7 @@ class DummyModel():
                     "movie_genres": movie_genres,
                 }
             )
-        
+
         return pd.DataFrame(rows)
 
 
@@ -139,10 +117,10 @@ def override_get_db():
 
 
 def override_get_champion_model():
-    '''
-    Simulates the get_champion_model function, but this one returns a dummy model 
+    """
+    Simulates the get_champion_model function, but this one returns a dummy model
     instead.
-    '''
+    """
     return DummyModel()
 
 
@@ -152,9 +130,9 @@ def override_user_id_offset():
 
 
 def override_refresh_mv():
-    '''
-    Simulates the refresh_mv function, but this one does nothing. 
-    '''
+    """
+    Simulates the refresh_mv function, but this one does nothing.
+    """
     return True
 
 

@@ -10,7 +10,7 @@ class AppRating(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     movieId = Column(
-        Integer, ForeignKey('movies.movieId', ondelete="CASCADE"), primary_key=True
+        Integer, ForeignKey("movies.movieId", ondelete="CASCADE"), primary_key=True
     )
     rating = Column(Numeric(2, 1), nullable=False)
     timestamp = Column(BigInteger, nullable=False)

@@ -56,7 +56,7 @@ def rate_movie(
         db.execute(stmt)
         db.commit()
     except IntegrityError as e:
-        # Rollback transaction and raise HTTPException for database constraint violation 
+        # Rollback transaction and raise HTTPException for database constraint violation
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -14,11 +14,9 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import zlib
 from contextlib import asynccontextmanager
-from datetime import datetime
 
 import numpy as np
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, status, Depends
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
@@ -29,7 +27,7 @@ from src.api.routers import admin, auth, rate_movie, recommend, train
 from src.api.security import init_authorization
 
 # Import sql request code
-from src.db.database_session import engine, get_db
+from src.db.database_session import get_db
 from src.models.management import (
     MODEL_NAME,
     TRAIN_CSR_STORE,
@@ -115,13 +113,11 @@ app.include_router(rate_movie.router)
 
 
 @app.get("/health", tags=["System"])
-def health_check(
-    db: Session = Depends(get_db)
-):  
-    '''
+def health_check(db: Session = Depends(get_db)):
+    """
     Lightweight health-check endpoint.
     Verifies connectivity to both the database and MLflow server.
-    '''
+    """
     # Define status vals and msgs
     db_status = False
     db_status_msg = ""
@@ -150,12 +146,12 @@ def health_check(
         mlflow_tracking_uri = None
         mlflow_status = False
         mlflow_status_msg = "No mlfow tracking uri found in env vars. Check if exists and if name is correct."
-        logger.error("No mlfow tracking uri found: {e}")
+        logger.error(f"No mlfow tracking uri found: {e}")
 
     # Test MLflow connection
     if mlflow_tracking_uri:
         try:
-            # Request mlflow server 
+            # Request mlflow server
             mlflow_url = mlflow_tracking_uri.rstrip("/")
             response = requests.get(mlflow_url, timeout=2)
             response.raise_for_status()
@@ -166,13 +162,15 @@ def health_check(
             # If request fails, set mlflow status to unhealthy and capture error message
             mlflow_status = False
             mlflow_status_msg = "Mlfow connection couldn't be established."
-            logger.error("No mlflow connection: {e}")
+            logger.error(f"No mlflow connection: {e}")
 
     # Check overall health
-    healthy = db_status and mlflow_status 
+    healthy = db_status and mlflow_status
 
     return JSONResponse(
-        status_code=status.HTTP_200_OK if healthy else status.HTTP_500_INTERNAL_SERVER_ERROR,
+        status_code=status.HTTP_200_OK
+        if healthy
+        else status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "DB": {
                 "ok": db_status,
@@ -181,8 +179,8 @@ def health_check(
             "MLflow": {
                 "ok": mlflow_status,
                 "message": mlflow_status_msg,
-            },            
-        }
+            },
+        },
     )
 
 

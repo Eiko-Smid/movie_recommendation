@@ -1,21 +1,21 @@
+import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
-import pytest
 
 from src.api.role import UserRole
 from src.api.schemas import ActiveUserRequest, UserRoleRequest
-
 from tests.utils.get_authentication_head import (
+    USER_ID,
     get_admin_auth_head,
     get_dev_auth_head,
-    get_user_auth_head,
     get_inactive_admin_auth_head,
-    USER_ID,
+    get_user_auth_head,
 )
 
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 # Integration tests for /get_all_users endpoint
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
+
 
 @pytest.mark.parametrize(
     "role, expected_status",
@@ -64,7 +64,7 @@ def test_get_all_users_types_and_roles(client: TestClient) -> None:
 
     # Extract data
     users = response.json()["users"]
-    
+
     # Check types and roles
     assert all(isinstance(user["id"], int) for user in users)
     assert all(isinstance(user["email"], str) for user in users)
@@ -90,17 +90,18 @@ def test_get_all_users_by_inactive_admin(client: TestClient) -> None:
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 # Integration tests for "/users/{user_id}/role" endpoint
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
+
 
 @pytest.mark.parametrize(
-        "role, expected_status",
-        [
-            (UserRole.ADMIN, status.HTTP_200_OK),
-            (UserRole.DEVELOPER, status.HTTP_403_FORBIDDEN),
-            (UserRole.USER, status.HTTP_403_FORBIDDEN),
-        ],
+    "role, expected_status",
+    [
+        (UserRole.ADMIN, status.HTTP_200_OK),
+        (UserRole.DEVELOPER, status.HTTP_403_FORBIDDEN),
+        (UserRole.USER, status.HTTP_403_FORBIDDEN),
+    ],
 )
 def test_set_user_role_access(client: TestClient, role, expected_status) -> None:
     """
@@ -149,7 +150,7 @@ def test_set_user_role_types_and_roles(client: TestClient) -> None:
 
     # Extract data and check types
     data = response.json()
-    assert isinstance(data["id"], int) 
+    assert isinstance(data["id"], int)
     assert isinstance(data["email"], str)
     assert isinstance(data["is_active"], bool)
     assert isinstance(data["role"], str)
@@ -176,17 +177,18 @@ def test_set_user_role_by_inactive_admin(client: TestClient) -> None:
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 # Integration tests for "/users/{user_id}/is_active" endpoint
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
+
 
 @pytest.mark.parametrize(
-        "role, expected_status",
-        [
-            (UserRole.ADMIN, status.HTTP_200_OK),
-            (UserRole.DEVELOPER, status.HTTP_403_FORBIDDEN),
-            (UserRole.USER, status.HTTP_403_FORBIDDEN),
-        ],
+    "role, expected_status",
+    [
+        (UserRole.ADMIN, status.HTTP_200_OK),
+        (UserRole.DEVELOPER, status.HTTP_403_FORBIDDEN),
+        (UserRole.USER, status.HTTP_403_FORBIDDEN),
+    ],
 )
 def test_set_is_active_access(client: TestClient, role, expected_status) -> None:
     """
@@ -261,4 +263,3 @@ def test_set_user_active_by_inactive_admin(client: TestClient) -> None:
 
     # Check that the request is unauthorized for an inactive admin
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
-

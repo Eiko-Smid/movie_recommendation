@@ -1,7 +1,6 @@
-from src.db.models.users import User
 from src.api.role import UserRole
 from src.api.security import hash_password
-
+from src.db.models.users import User
 
 ADMIN_USER = User(
     id=1,
@@ -13,7 +12,7 @@ ADMIN_USER = User(
 
 
 DEV_USER = User(
-    id=2, 
+    id=2,
     email="dev@test.com",
     hashed_password=hash_password("dev"),
     is_active=True,

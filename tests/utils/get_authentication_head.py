@@ -1,8 +1,6 @@
 from fastapi import status
 from fastapi.testclient import TestClient
 
-
-
 # Define Admin and user test data
 ADMIN_EMAIL = "admin@test.com"
 ADMIN_PWD = "admin"
@@ -55,7 +53,7 @@ def get_dev_auth_head(client: TestClient) -> dict:
 
     # Extract token and convert to correct format
     token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}    
+    return {"Authorization": f"Bearer {token}"}
 
 
 def get_user_auth_head(client: TestClient) -> dict:

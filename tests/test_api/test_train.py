@@ -1,26 +1,18 @@
-from typing import List
-
+import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 
-import pytest
-
 from src.api.role import UserRole
-from src.api.schemas import (
-    RecommendMovieByIDRequest,
-    RecommendMovieCurrentUserRequest,
-)
-from src.models.management import get_champion_model
-from tests.utils.get_authentication_head import(
+from tests.utils.get_authentication_head import (
     get_admin_auth_head,
     get_dev_auth_head,
-    get_user_auth_head,
     get_inactive_admin_auth_head,
+    get_user_auth_head,
 )
 
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 # Integration tests for /train/refresh-mv endpoint
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 
 
 @pytest.mark.parametrize(
@@ -70,8 +62,8 @@ def test_refresh_mv_types(client: TestClient):
 
     # Extract data
     data: dict = response.json()
-    
-    # Extract data and check types  
+
+    # Extract data and check types
     assert data.get("status") == "ok"
     assert data.get("concurrent") == True
 
@@ -94,9 +86,9 @@ def test_refresh_mv_inactive_admin(client: TestClient):
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 # Integration tests for /train/train_model endpoint
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 
 
 @pytest.mark.parametrize(
@@ -146,5 +138,3 @@ def test_train_model_inactive_admin(client: TestClient):
 
     # Check if access is forbidden for inactive admin user
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
-
-

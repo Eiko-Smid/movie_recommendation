@@ -1,25 +1,21 @@
-from typing import List
-
+import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
-
-import pytest
 
 from src.api.role import UserRole
 from src.api.schemas import (
     RecommendMovieByIDRequest,
     RecommendMovieCurrentUserRequest,
 )
-from src.models.management import get_champion_model
-from tests.utils.get_authentication_head import(
+from tests.utils.get_authentication_head import (
     get_admin_auth_head,
     get_dev_auth_head,
     get_user_auth_head,
 )
 
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 # Integration tests for /recommend/recommend_movie_for_current_user endpoint
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 
 
 @pytest.mark.parametrize(
@@ -30,7 +26,9 @@ from tests.utils.get_authentication_head import(
         (UserRole.USER, status.HTTP_200_OK),
     ],
 )
-def test_recommend_movie_for_current_user_access(client: TestClient, role: UserRole, expected_status: int) -> None:
+def test_recommend_movie_for_current_user_access(
+    client: TestClient, role: UserRole, expected_status: int
+) -> None:
     """
     Test that users with different roles (admin, developer, user) can access the
     /recommend/recommend_movie_for_current_user endpoint. Asserts that the endpoint
@@ -83,7 +81,7 @@ def test_recommend_movie_for_current_user_types_and_roles(client: TestClient) ->
         headers=header,
     )
 
-    # Extract response JSON and check types     
+    # Extract response JSON and check types
     data: dict = response.json()
     assert isinstance(data.get("user_id"), int)
     assert all(isinstance(movie_id, int) for movie_id in data.get("movie_ids"))
@@ -91,7 +89,9 @@ def test_recommend_movie_for_current_user_types_and_roles(client: TestClient) ->
     assert all(isinstance(genre, str) for genre in data.get("movie_genres", []))
 
 
-def test_recommend_movie_for_current_user_champion_model_not_loaded(client: TestClient) -> None:
+def test_recommend_movie_for_current_user_champion_model_not_loaded(
+    client: TestClient,
+) -> None:
     """
     Test that the /recommend/recommend_movie_for_current_user endpoint returns a
     503 Service Unavailable error when the champion model is not loaded.
@@ -120,12 +120,24 @@ def test_recommend_movie_for_current_user_champion_model_not_loaded(client: Test
 
 
 @pytest.mark.parametrize(
-        "n_movies_to_rec, new_user_interactions, expected_status",
-        [
-            (0, [1, 2, 3], status.HTTP_422_UNPROCESSABLE_CONTENT),  # Invalid n_movies_to_rec
-            (10, "invalid_interactions", status.HTTP_422_UNPROCESSABLE_CONTENT),  # Invalid new_user_interactions
-            (10, None, status.HTTP_200_OK),  # Valid payload with optional new_user_interactions
-        ],
+    "n_movies_to_rec, new_user_interactions, expected_status",
+    [
+        (
+            0,
+            [1, 2, 3],
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        ),  # Invalid n_movies_to_rec
+        (
+            10,
+            "invalid_interactions",
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        ),  # Invalid new_user_interactions
+        (
+            10,
+            None,
+            status.HTTP_200_OK,
+        ),  # Valid payload with optional new_user_interactions
+    ],
 )
 def test_recommend_movie_for_current_user_invalid_payload(
     client: TestClient,
@@ -142,9 +154,9 @@ def test_recommend_movie_for_current_user_invalid_payload(
 
     # Define payload for recommendation request
     payload = {
-    "n_movies_to_rec": n_movies_to_rec,
-    "new_user_interactions": new_user_interactions,
-}
+        "n_movies_to_rec": n_movies_to_rec,
+        "new_user_interactions": new_user_interactions,
+    }
     # Call endpoint to get movie recommendations for current user with invalid payload
     response = client.post(
         url="/recommend/recommend_movie_for_current_user",
@@ -156,9 +168,9 @@ def test_recommend_movie_for_current_user_invalid_payload(
     assert response.status_code == expected_status
 
 
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 # Integration tests for /recommend/recommend_movie_by_id endpoint
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 
 
 @pytest.mark.parametrize(
@@ -302,4 +314,3 @@ def test_recommend_movie_by_id_invalid_payload(
 
     # Check expected status for each payload scenario
     assert response.status_code == expected_status
-

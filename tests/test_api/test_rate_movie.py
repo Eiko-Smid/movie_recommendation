@@ -1,20 +1,20 @@
+import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
-import pytest
 
 from src.api.role import UserRole
 from src.api.schemas import RateMovieRequest
-
 from tests.utils.get_authentication_head import (
     get_admin_auth_head,
     get_dev_auth_head,
-    get_user_auth_head,
     get_inactive_admin_auth_head,
+    get_user_auth_head,
 )
 
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
 # Integration tests for /update_DB/rate_movie endpoint
-#____________________________________________________________________________________________________
+# ____________________________________________________________________________________________________
+
 
 @pytest.mark.parametrize(
     "role, expected_status",
@@ -36,7 +36,7 @@ def test_rate_movie_user_access(client: TestClient, role, expected_status):
         header = get_dev_auth_head(client)
     elif role == UserRole.USER:
         header = get_user_auth_head(client)
-    
+
     # Define payload
     payload = RateMovieRequest(
         movie_id=1,
@@ -77,7 +77,7 @@ def test_rate_movie_types_and_roles(client: TestClient):
     # Extract response data and check types
     data = response.json()
     assert isinstance(data["message"], str)
-    assert isinstance(data["movie_id"],int)
+    assert isinstance(data["movie_id"], int)
     assert isinstance(data["user_id"], int)
     assert isinstance(data["rating"], float)
     assert isinstance(data["timestamp"], int)
@@ -111,12 +111,22 @@ def test_rate_movie_inactive_admin(client: TestClient):
 @pytest.mark.parametrize(
     "movie_id, rating, expected_status",
     [
-        (10, 3.0, status.HTTP_404_NOT_FOUND),                       # Not existing movie id
-        (1, 6.0, status.HTTP_422_UNPROCESSABLE_CONTENT),            # Wrong rating (>5.0 not allowed)
-        (1, "wrong_type", status.HTTP_422_UNPROCESSABLE_CONTENT),   # Wrong rating type -> str instead of float
+        (10, 3.0, status.HTTP_404_NOT_FOUND),  # Not existing movie id
+        (
+            1,
+            6.0,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        ),  # Wrong rating (>5.0 not allowed)
+        (
+            1,
+            "wrong_type",
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        ),  # Wrong rating type -> str instead of float
     ],
 )
-def test_rate_movie_invalid_payload(client: TestClient, movie_id, rating, expected_status):
+def test_rate_movie_invalid_payload(
+    client: TestClient, movie_id, rating, expected_status
+):
     """
     Test that invalid payloads are rejected by the rate_movie endpoint.
     Asserts that /update_DB/rate_movie returns the correct error status for invalid movie_id or rating values.
@@ -124,10 +134,10 @@ def test_rate_movie_invalid_payload(client: TestClient, movie_id, rating, expect
     # Get token for admin user
     header = get_admin_auth_head(client)
 
-    # Define invalid payload 
+    # Define invalid payload
     payload = {
         "movie_id": movie_id,
-        "rating": rating, 
+        "rating": rating,
     }
 
     # Call endpoint to rate movie
@@ -139,4 +149,3 @@ def test_rate_movie_invalid_payload(client: TestClient, movie_id, rating, expect
 
     # Check that the response status code matches the expected status for invalid payloads
     assert response.status_code == expected_status
-
