@@ -34,14 +34,17 @@ jobs:
         DB_URL: sqlite:///./test.db
       run: |
         pytest --cov=src --cov-report=term-missing --cov-fail-under=40 -v
+
     - name: Build Docker Images
       run: |
-        docker build -f Dockerfile.api -t movie-reco-api .
+        docker build -f Dockerfile.api -t movie-reco-api:ci .
 
-    # - name: Run Container test
-    #   run: |
-    #     docker run -d -p 8000:8000 movie_rec_api .
-    #     sleep 5
-    #     curl http://localhost:8000/ || exit 1
+    - name: Run api test
+      env:
+        TESTING: "true"
+      run: |
+        docker run -d -p 8000:8000 movie-reco-api:ci
+        sleep 5
+        curl http://localhost:8000/health || exit 1
 
-  # pytest -v -s
+  
