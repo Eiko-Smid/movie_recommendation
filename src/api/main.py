@@ -113,11 +113,48 @@ app.include_router(rate_movie.router)
 
 
 @app.get("/health", tags=["System"])
-def health_check(db: Session = Depends(get_db)):
-    """
-    Lightweight health-check endpoint.
-    Verifies connectivity to both the database and MLflow server.
-    """
+def health():
+    '''
+    Lightweight health check to ensure api is running.
+    '''
+    return {"status": "ok"}
+
+
+@app.get("/health/full", tags=["System"])
+def health_advanced(db: Session = Depends(get_db)):
+    '''
+    Performs an extended health check for the API and its external dependencies.
+
+    This endpoint verifies that the application can communicate with the configured
+    database and the MLflow tracking server. It returns a structured JSON response
+    with the health status of each dependency and an overall HTTP status code:
+    200 if both services are available, otherwise 500.
+
+    Parameters
+    ----------
+    db : Session, optional
+        SQLAlchemy database session injected by FastAPI via dependency injection.
+        Used to execute a lightweight query in order to verify database connectivity.
+
+    Returns
+    -------
+    JSONResponse
+        A JSON response containing the health state of the database and MLflow
+        connection in the form:
+
+        {
+            "DB": {
+                "ok": bool,
+                "message": str
+            },
+            "MLflow": {
+                "ok": bool,
+                "message": str
+            }
+        }
+
+    The response status code is 200 if both checks succeed, otherwise 500.
+    '''
     # Define status vals and msgs
     db_status = False
     db_status_msg = ""
