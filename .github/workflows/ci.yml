@@ -9,6 +9,12 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
+    env:
+      IMAGE_NAME_API: movie-reco-api:ci
+      CONTAINER_NAME_API: movie-reco-api-ci
+      TESTING: "true"
+      
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -30,21 +36,47 @@ jobs:
     
     - name: Run tests (pytest)
       env:
-        TESTING: "true"
         DB_URL: sqlite:///./test.db
       run: |
         pytest --cov=src --cov-report=term-missing --cov-fail-under=40 -v
 
     - name: Build Docker Images
       run: |
-        docker build -f Dockerfile.api -t movie-reco-api:ci .
+        docker build -f Dockerfile.api -t $IMAGE_NAME_API .
 
-    - name: Run api test
-      env:
-        TESTING: "true"
+    - name: Run api Container      
       run: |
-        docker run -d -p 8000:8000 movie-reco-api:ci
-        sleep 5
-        curl http://localhost:8000/health || exit 1
+        echo "Remove old API Container if exists."
+        docker rm -f $CONTAINER_NAME_API || true
 
-  
+        echo "Run API Container"
+        docker run -d \
+          --name $CONTAINER_NAME_API \
+          -e TESTING=true \
+          -p 8000:8000 \
+          $IMAGE_NAME_API
+      
+    - name: Test API container      
+      run: |
+        for i in {1..10}; do
+          if curl -s http://localhost:8000/health; then
+            echo "API started and health endpoint reachable!"
+            exit 0
+          fi
+          echo "Waiting for API..."
+          sleep 2
+        done
+
+        echo "API did not start in time"
+        echo "Logs:"
+        docker logs $CONTAINER_NAME_API
+
+        exit 1
+
+    - name: Stop container
+      if: always()
+      run: |
+        echo "Stopping Container"
+        docker stop $CONTAINER_NAME_API || true
+        echo "Done"
+      

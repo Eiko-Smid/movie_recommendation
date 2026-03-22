@@ -1,14 +1,15 @@
 #!/bin/bash
 
+# Define container name
 CONTAINER_NAME="movie-reco-api-ci"
 
-echo "Removing old container if exists..."
+echo "Removing old container if exists"
 docker rm -f $CONTAINER_NAME 2>/dev/null
 
-echo "Building container..."
+echo "Building API image"
 docker build -f Dockerfile.api -t movie-reco-api:ci .
 
-echo "Running container..."
+echo "Run container"
 docker run -d \
   --name $CONTAINER_NAME \
   -e TESTING=true \
@@ -18,7 +19,7 @@ docker run -d \
 echo "Waiting for startup..."
 sleep 5
 
-echo "Checking if container is running..."
+echo "Checking if container is running"
 if [ "$(docker inspect -f '{{.State.Running}}' $CONTAINER_NAME)" != "true" ]; then
   echo "Container crashed!"
   docker logs $CONTAINER_NAME
@@ -28,7 +29,7 @@ fi
 echo "Logs:"
 docker logs $CONTAINER_NAME
 
-echo "Testing health endpoint..."
+echo "Testing health endpoint until reachable"
 for i in {1..10}; do
   if curl -s http://localhost:8000/health; then
     echo ""
@@ -39,7 +40,7 @@ for i in {1..10}; do
   sleep 2
 done
 
-echo "Stopping container..."
+echo "Stop container"
 docker stop $CONTAINER_NAME
 
 echo "Done!"
