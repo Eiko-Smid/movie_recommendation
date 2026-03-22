@@ -9,5 +9,7 @@ RUN apk add --no-cache \
 # Create log directory
 RUN mkdir -p /var/log
 
+CMD ["crond", "-f", "-l", "2"]
+
 # Copy optional scripts (if needed later)
 WORKDIR /app
