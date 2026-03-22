@@ -5,9 +5,6 @@ from fastapi import HTTPException, status
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-# Global DB objects (initialized at runtime)
-engine = None
-SessionLocal = None
 
 def get_db_url() -> str:
     """
@@ -46,7 +43,6 @@ def init_db():
     MUST be called at runtime (e.g., inside FastAPI lifespan).
     Avoids connection attempts during module import.
     """
-    global engine, SessionLocal
 
     # Get DB URL and create engine
     db_url = get_db_url()
@@ -58,6 +54,8 @@ def init_db():
         autoflush=False,
         autocommit=False,
     )
+
+    return engine, SessionLocal
 
 
 # Base class for SQLAlchemy models
@@ -75,12 +73,15 @@ def get_db():
     Raises:
         RuntimeError if DB not initialized
     """
-    if SessionLocal is None:
+    if SESSION_LOCAL is None:
         raise RuntimeError("Database not initialized. Call init_db() first.")
 
-    db = SessionLocal()
+    db = SESSION_LOCAL()
     try:
         yield db
     finally:
         db.close()
+
         
+# Init engine and Session local objects
+ENGINE, SESSION_LOCAL = init_db()

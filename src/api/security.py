@@ -9,7 +9,7 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from src.api.role import UserRole
-from src.db.database_session import SessionLocal, get_db
+from src.db.database_session import SESSION_LOCAL, get_db
 from src.db.models.users import User
 
 # Create configured hashing machine -> Hash pwd with this machine
@@ -214,7 +214,7 @@ def init_authorization():
     """
     try:
         # Start DB session
-        db = SessionLocal()
+        db = SESSION_LOCAL()
 
         # Check if an admin user already exists in the DB
         admin_exists = db.query(User).filter(User.role == UserRole.ADMIN).first()

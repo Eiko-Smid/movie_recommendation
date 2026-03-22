@@ -12,7 +12,7 @@ from src.api.schemas import (
     TrainResponse,
 )
 from src.api.security import check_user_authorization
-from src.db.database_session import engine
+from src.db.database_session import ENGINE
 from src.db.db_requests import (
     MV_NAME,
     _load_full_histories_for_n_users,
@@ -112,7 +112,7 @@ def _load_data(train_param: TrainRequest) -> Tuple[pd.DataFrame, pd.DataFrame]:
         if n_users == 0:
             n_users = 500
 
-        with engine.connect() as conn:
+        with ENGINE.connect() as conn:
             if n_users < 0:
                 # Load all the data of MV
                 logger.info("Training with full MV ('%s') ratings.", MV_NAME)

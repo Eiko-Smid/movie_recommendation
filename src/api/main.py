@@ -24,7 +24,7 @@ from src.api.routers import admin, auth, rate_movie, recommend, train
 from src.api.security import init_authorization
 
 # Import sql request code
-from src.db.database_session import get_db, init_db
+from src.db.database_session import get_db
 from src.models.management import (
     MODEL_NAME,
     TRAIN_CSR_STORE,
@@ -91,9 +91,6 @@ async def lifespan(app: FastAPI):
     """
     # Load testing var from env, default to false if not set
     TESTING = os.getenv("TESTING", "false").lower() == "true"
-
-    # Init DB 
-    init_db()
 
     # procedure for non-testing environment
     if not TESTING:    
