@@ -1,0 +1,13 @@
+FROM alpine:3.20
+
+# Install required tools
+RUN apk add --no-cache \
+    curl \
+    bash \
+    busybox-suid
+
+# Create log directory
+RUN mkdir -p /var/log
+
+# Copy optional scripts (if needed later)
+WORKDIR /app
