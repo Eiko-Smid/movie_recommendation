@@ -12,8 +12,14 @@ jobs:
     env:
       IMAGE_NAME_API: movie-reco-api:ci
       CONTAINER_NAME_API: movie-reco-api-ci
+      HEALTH_ENDPOINT_API: http://localhost:8000/health
+      IMAGE_NAME_STREAMLIT: movie-reco-streamlit:ci
+      CONTAINER_NAME_STREAMLIT: movie-reco-streamlit-ci
+      URL_STREAMLIT: http://localhost:8501
+      INTERNAL_HEALTH_ENDPOINT_API: http://api:8000/health
+      DB_URL: sqlite:///./test.db
+      NETWORK_NAME: movie-rco-ci-net
       TESTING: "true"
-      
 
     steps:
     - name: Checkout repository
@@ -43,23 +49,45 @@ jobs:
     - name: Build Docker Images
       run: |
         docker build -f Dockerfile.api -t $IMAGE_NAME_API .
+        docker build -f Dockerfile.streamlit -t $IMAGE_NAME_STREAMLIT .
 
-    - name: Run api Container      
+    - name: Create CI docker network
+      run: |
+        docker network rm $NETWORK_NAME 2>/dev/null || true
+        docker network create $NETWORK_NAME
+
+    - name: Run API Container
       run: |
         echo "Remove old API Container if exists."
-        docker rm -f $CONTAINER_NAME_API || true
+        docker rm -f $CONTAINER_NAME_API 2>/dev/null || true
 
         echo "Run API Container"
         docker run -d \
           --name $CONTAINER_NAME_API \
+          --network $NETWORK_NAME \
+          --network-alias api \
           -e TESTING=true \
           -p 8000:8000 \
           $IMAGE_NAME_API
-      
-    - name: Test API container      
+
+    - name: Run Streamlit Container
+      run: |
+        echo "Remove old Streamlit Container if exists."
+        docker rm -f $CONTAINER_NAME_STREAMLIT 2>/dev/null || true
+
+        echo "Run Streamlit Container"
+        docker run -d \
+          --name $CONTAINER_NAME_STREAMLIT \
+          --network $NETWORK_NAME \
+          -e DB_URL="$DB_URL" \
+          -e API_URL="http://api:8000" \
+          -p 8501:8501 \
+          $IMAGE_NAME_STREAMLIT
+
+    - name: Test API container
       run: |
         for i in {1..10}; do
-          if curl -s http://localhost:8000/health; then
+          if curl -s $HEALTH_ENDPOINT_API; then
             echo "API started and health endpoint reachable!"
             exit 0
           fi
@@ -73,10 +101,45 @@ jobs:
 
         exit 1
 
-    - name: Stop container
+    - name: Test Streamlit container
+      run: |
+        for i in {1..10}; do
+          if curl -s $URL_STREAMLIT; then
+            echo "Streamlit web app reachable!"
+            exit 0
+          fi
+          echo "Waiting for Streamlit web app to start..."
+          sleep 2
+        done
+
+        echo "Streamlit did not start in time"
+        echo "Logs:"
+        docker logs $CONTAINER_NAME_STREAMLIT
+
+        exit 1
+
+    - name: Test Streamlit to API network
+      run: |
+        if docker exec "$CONTAINER_NAME_STREAMLIT" \
+          python -c "import requests; requests.get('$INTERNAL_HEALTH_ENDPOINT_API', timeout=5).raise_for_status()"
+        then
+          echo "Streamlit can reach API health endpoint."
+          exit 0
+        fi
+
+        echo "Streamlit cannot reach API health endpoint."
+        echo "API logs:"
+        docker logs $CONTAINER_NAME_API
+        echo "Streamlit logs:"
+        docker logs $CONTAINER_NAME_STREAMLIT
+
+        exit 1
+
+    - name: Cleanup containers and network
       if: always()
       run: |
-        echo "Stopping Container"
-        docker stop $CONTAINER_NAME_API || true
-        echo "Done"
+        docker stop $CONTAINER_NAME_API 2>/dev/null || true
+        docker stop $CONTAINER_NAME_STREAMLIT 2>/dev/null || true
+        docker rm -f $CONTAINER_NAME_API $CONTAINER_NAME_STREAMLIT 2>/dev/null || true
+        docker network rm $NETWORK_NAME 2>/dev/null || true
       
