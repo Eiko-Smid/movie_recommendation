@@ -20,11 +20,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import mlflow
-from src.api.routers import admin, auth, rate_movie, recommend, train
-from src.api.security import init_authorization
 
 # Import AppState
 from src.api.app_state import AppState
+from src.api.routers import admin, auth, rate_movie, recommend, train
+from src.api.security import init_authorization
 
 # Import sql request code
 from src.db.database_session import get_db
