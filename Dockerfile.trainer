@@ -1,15 +1,17 @@
+
 FROM alpine:3.20
 
-# Install required tools
-RUN apk add --no-cache \
-    curl \
-    bash \
-    busybox-suid
+# Install tools
+RUN apk add --no-cache curl bash busybox-suid
 
-# Create log directory
-RUN mkdir -p /var/log
-
-CMD ["crond", "-f", "-l", "2"]
-
-# Copy optional scripts (if needed later)
+# Set working directory
 WORKDIR /app
+
+# Copy scripts into container
+COPY trainer_utils/ /app/trainer_utils/
+
+# Make scripts executable
+RUN chmod +x /app/trainer_utils/*.sh
+
+# Default command → start cron setup script
+CMD ["/app/trainer_utils/run_training.sh"]

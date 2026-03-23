@@ -9,7 +9,9 @@ from src.api.schemas import (
     RecommendMovieCurrentUserRequest,
     RecommendResponse,
 )
-from src.api.security import check_user_authorization
+from src.api.security import (
+    check_user_authorization,
+)
 from src.db.db_requests import get_user_id_offset
 from src.db.models.users import User
 from src.models.management import get_champion_model

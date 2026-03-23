@@ -1,12 +1,13 @@
 {
-  "n_rows": 10000,
+  "n_rows": 1000,
   "pos_threshold": 4,
   "als_parameter": {
     "bm25_K1_list": [100, 200],
     "bm25_B_list": [0.8, 1],
     "factors_list": [128, 256],
     "reg_list": [0.1, 0.2],
-    "iters_list": [25]
+    "iters_list": [25],
+    "K": 10
   },
   "n_popular_movies": 100
 }
