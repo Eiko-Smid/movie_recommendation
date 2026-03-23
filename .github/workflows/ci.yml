@@ -11,22 +11,31 @@ jobs:
 
     env:
       # Define API vars
-      IMAGE_NAME_API: movie-reco-api:ci
+      IMAGE_NAME_API: yourdockerhub/movie-reco-api:latest
+      # IMAGE_TAG_API: yourdockerhub/movie-reco-api:latest
       CONTAINER_NAME_API: movie-reco-api-ci
       HEALTH_ENDPOINT_API: http://localhost:8000/health
       API_SERVICE_TOKEN: test-service-token
 
       # Define Streamlit vars
-      IMAGE_NAME_STREAMLIT: movie-reco-streamlit:ci
+      IMAGE_NAME_STREAMLIT: yourdockerhub/movie-reco-streamlit:latest
+      # IMAGE_TAG_STREAMLIT: yourdockerhub/movie-reco-streamlit:latest
       CONTAINER_NAME_STREAMLIT: movie-reco-streamlit-ci
       URL_STREAMLIT: http://localhost:8501
       INTERNAL_HEALTH_ENDPOINT_API: http://api:8000/health
 
       # Define trainer vars
-      IMAGE_NAME_TRAINER: movie-reco-trainer:ci
+      IMAGE_NAME_TRAINER: yourdockerhub/movie-reco-trainer:latest
+      # IMAGE_TAG_TRAINER: yourdockerhub/movie-reco-trainer:latest
       CONTAINER_NAME_TRAINER: movie-reco-trainer-ci
       URL_TRAINER: http://localhost:8000/
       
+      # Define mlflow vars
+      IMAGE_NAME_MLFLOW: yourdockerhub/movie-reco-mlflow:latest
+      # IMAGE_TAG_MLFLOW: yourdockerhub/movie-reco-mlflow:latest
+      CONTAINER_NAME_MLFLOW: movie-reco-mlflow-ci
+      URL_MLFLOW: http://localhost:5000 
+
       # Define DB vars
       DB_URL: sqlite:///./test.db
       
@@ -66,11 +75,24 @@ jobs:
         docker build -f Dockerfile.api -t $IMAGE_NAME_API .
         docker build -f Dockerfile.streamlit -t $IMAGE_NAME_STREAMLIT .
         docker build -f Dockerfile.trainer -t $IMAGE_NAME_TRAINER .
+        docker build -f Dockerfile.mlflow -t $IMAGE_NAME_MLFLOW .
 
     - name: Create CI docker network
       run: |
         docker network rm $NETWORK_NAME 2>/dev/null || true
         docker network create $NETWORK_NAME
+
+    - name: Run MLflow Container
+      run: |
+        echo "Remove old MLflow Container if exists."
+        docker rm -f $CONTAINER_NAME_MLFLOW 2>/dev/null || true
+
+        echo "Run MLflow Container"
+        docker run -d \
+          --name $CONTAINER_NAME_MLFLOW \
+          --network $NETWORK_NAME \
+          -p 5000:5000 \
+          $IMAGE_NAME_MLFLOW
 
     - name: Run API Container
       run: |
@@ -112,6 +134,23 @@ jobs:
           -e DB_URL="$DB_URL" \
           -e API_URL="http://api:8000" \
           $IMAGE_NAME_TRAINER
+
+    - name: Test mlflow container
+      run: |
+        for i in {1..10}; do
+          if curl -s $URL_MLFLOW; then
+            echo "MLflow server started and reachable!"
+            exit 0
+          fi
+          echo "Waiting for MLflow server..."
+          sleep 2
+        done
+
+        echo "MLflow server did not start in time"
+        echo "Logs:"
+        docker logs $CONTAINER_NAME_MLFLOW
+
+        exit 1
 
     - name: Test API container
       run: |
@@ -180,11 +219,25 @@ jobs:
 
         exit 1
 
+    - name: Login to Docker Hub
+      run: |
+        echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+
+    - name: Push images to Docker Hub
+      run: |
+        docker push $IMAGE_NAME_MLFLOW
+        docker push $IMAGE_NAME_API
+        docker push $IMAGE_NAME_STREAMLIT
+        docker push $IMAGE_NAME_TRAINER
+        
     - name: Cleanup containers and network
       if: always()
       run: |
+        docker stop $CONTAINER_NAME_MLFLOW 2>/dev/null || true
         docker stop $CONTAINER_NAME_API 2>/dev/null || true
         docker stop $CONTAINER_NAME_STREAMLIT 2>/dev/null || true
+        docker stop $CONTAINER_NAME_TRAINER 2>/dev/null || true
         docker rm -f $CONTAINER_NAME_API $CONTAINER_NAME_STREAMLIT 2>/dev/null || true
+        docker rm -f $CONTAINER_NAME_MLFLOW $CONTAINER_NAME_TRAINER 2>/dev/null || true
         docker network rm $NETWORK_NAME 2>/dev/null || true
       
