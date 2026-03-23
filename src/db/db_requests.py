@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.db.database_session import SessionLocal, engine
+from src.db.database_session import ENGINE, SESSION_LOCAL
 from src.db.models.ratings import Rating
 
 # Database settings
@@ -32,7 +32,7 @@ def get_user_id_offset() -> Optional[int]:
     another table, which includes independend user ids.
     """
     # Creates DB session
-    session = SessionLocal()
+    session = SESSION_LOCAL()
 
     try:
         # Get the max user id of
@@ -57,7 +57,7 @@ def _mv_exists() -> bool:
           AND matviewname = :mv_name
         LIMIT 1;
     """)
-    with engine.connect() as conn:
+    with ENGINE.connect() as conn:
         res = conn.execute(q, {"mv_name": MV_NAME}).first()
     return res is not None
 
@@ -66,7 +66,7 @@ def _ensure_indexes() -> None:
     """
     Creates some useful indexes.
     """
-    with engine.begin() as conn:
+    with ENGINE.begin() as conn:
         conn.execute(
             text(f"""
             CREATE UNIQUE INDEX IF NOT EXISTS idx_{MV_NAME}_userId
@@ -120,7 +120,7 @@ def create_uv_all_ratings() -> None:
             FROM app_ratings ar;        
     """)
     try:
-        with engine.begin() as conn:
+        with ENGINE.begin() as conn:
             conn.execute(sql, {"offset": uid_offset})
     except SQLAlchemyError:
         logger.exception("Failed to Union ratings with app_ratings table.")
@@ -140,7 +140,7 @@ def refresh_mv() -> bool:
     create_uv_all_ratings()
 
     # Create MV -> Only users with more than min_r exists
-    with engine.begin() as conn:
+    with ENGINE.begin() as conn:
         # Ensure MV exists
         conn.execute(
             text(f"""
@@ -163,13 +163,13 @@ def refresh_mv() -> bool:
 
     # 2) Refresh MV (concurrent if possible)
     try:
-        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        with ENGINE.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             conn.execute(text("SELECT pg_try_advisory_lock(987654321);"))
             conn.execute(text(f"REFRESH MATERIALIZED VIEW CONCURRENTLY {MV_NAME};"))
             conn.execute(text("SELECT pg_advisory_unlock(987654321);"))
         return True
     except Exception:
-        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        with ENGINE.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             conn.execute(text(f"REFRESH MATERIALIZED VIEW {MV_NAME};"))
         return False
 
@@ -208,7 +208,7 @@ def _load_full_mv_users() -> pd.DataFrame:
             FROM all_ratings r
             JOIN sample_users su USING ("userId");
     """)
-    with engine.connect() as conn:
+    with ENGINE.connect() as conn:
         df = pd.read_sql_query(sql, conn)
 
     return df
@@ -245,7 +245,7 @@ def _load_full_histories_for_n_users(n_users_target: int) -> pd.DataFrame:
             ) from e
 
     # Check MV size (optional but helpful for a clear error)
-    with engine.connect() as conn:
+    with ENGINE.connect() as conn:
         mv_cnt = pd.read_sql_query(
             text(f"SELECT COUNT(*) AS c FROM {MV_NAME};"), conn
         ).iloc[0, 0]
@@ -266,7 +266,7 @@ def _load_full_histories_for_n_users(n_users_target: int) -> pd.DataFrame:
             FROM all_ratings r
             JOIN sample_users su USING ("userId");
     """)
-    with engine.connect() as conn:
+    with ENGINE.connect() as conn:
         df = pd.read_sql_query(sql, conn, params={"k_users": int(n_users_target)})
 
     return df

@@ -11,11 +11,8 @@ os.environ["OPENBLAS_NUM_THREADS"] = "1"
 # os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 # os.environ["NUMEXPR_NUM_THREADS"] = "1"
 
-
-import zlib
 from contextlib import asynccontextmanager
 
-import numpy as np
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -35,14 +32,6 @@ from src.models.management import (
 )
 from src.observability.metrics import PrometheusHTTPMetricsMiddleware
 
-
-def csr_fingerprint(X) -> str:
-    h = 0
-    for arr in (X.indptr, X.indices, X.data):
-        h = zlib.crc32(arr.view(np.uint8), h)
-    return f"{h & 0xFFFFFFFF:08x}"
-
-
 # _________________________________________________________________________________________________________
 # API Endpoints
 # _________________________________________________________________________________________________________
@@ -55,6 +44,44 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# @asynccontextmanager
+# async def lifespan(app: FastAPI):
+#     """
+#     Lifespan handler: runs once at startup and once at shutdown.
+#     Ensures that the champ model and the corresponding train_csr matrix get's loaded
+#     when the API starts.
+#     """
+#     # Init the authorization
+#     init_authorization()
+
+#     # Load trained csr matrix
+#     TRAIN_CSR_STORE.load()
+#     logger.info("[startup] CSR loaded at startup")
+
+#     # Load global champ model
+#     logger.info(f"Model name is: {MODEL_NAME}")
+#     try:
+#         app.state.champion_model = mlflow.pyfunc.load_model(
+#             f"models:/{MODEL_NAME}@Champion"
+#         )
+#         app.state.champion_model_version = get_model_version(model_name=MODEL_NAME)
+#         logger.info("[startup] Stored champ model in app.state.champion_model")
+#         logger.info(
+#             "[startup] Stored champ model version in app.state.champion_model_version"
+#         )
+#     except Exception:
+#         app.state.champion_model = None
+#         app.state.champion_model_version = None
+#         logger.exception(
+#             "[startup] Failed to load champion model or champ model version from MLflow"
+#         )
+
+#     yield  # app runs while yielded
+#     print("[champ-store] App shutting down")  # optional cleanup
+#     app.state.champion_model = None
+#     app.state.champion_model_version = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -62,36 +89,52 @@ async def lifespan(app: FastAPI):
     Ensures that the champ model and the corresponding train_csr matrix get's loaded
     when the API starts.
     """
-    # Init the authorization
-    init_authorization()
+    # Load testing var from env, default to false if not set
+    TESTING = os.getenv("TESTING", "false").lower() == "true"
 
-    # Load trained csr matrix
-    TRAIN_CSR_STORE.load()
-    logger.info("[startup] CSR loaded at startup")
+    # procedure for non-testing environment
+    if not TESTING:    
+        # Init the authorization
+        init_authorization()
 
-    # Load global champ model
-    logger.info(f"Model name is: {MODEL_NAME}")
-    try:
-        app.state.champion_model = mlflow.pyfunc.load_model(
-            f"models:/{MODEL_NAME}@Champion"
-        )
-        app.state.champion_model_version = get_model_version(model_name=MODEL_NAME)
-        logger.info("[startup] Stored champ model in app.state.champion_model")
-        logger.info(
-            "[startup] Stored champ model version in app.state.champion_model_version"
-        )
-    except Exception:
+        # Load trained csr matrix
+        TRAIN_CSR_STORE.load()
+        logger.info("[startup] CSR loaded at startup")
+
+        # Load global champ model
+        logger.info(f"Model name is: {MODEL_NAME}")
+        try:
+            app.state.champion_model = mlflow.pyfunc.load_model(
+                f"models:/{MODEL_NAME}@Champion"
+            )
+            app.state.champion_model_version = get_model_version(model_name=MODEL_NAME)
+            logger.info("[startup] Stored champ model in app.state.champion_model")
+            logger.info(
+                "[startup] Stored champ model version in app.state.champion_model_version"
+            )
+        except Exception as e:
+            app.state.champion_model = None
+            app.state.champion_model_version = None
+            logger.exception(
+                "[startup] Failed to load champion model or champ model version from MLflow"
+            )
+            raise e
+    else:
+        # Load global champ model
+        logger.info("[startup] CSR not loaded during CI check")
+        logger.info("Model name is: Test_Model_CI_check")
+
         app.state.champion_model = None
         app.state.champion_model_version = None
-        logger.exception(
-            "[startup] Failed to load champion model or champ model version from MLflow"
-        )
-
-    yield  # app runs while yielded
-    print("[champ-store] App shutting down")  # optional cleanup
+        logger.info("[startup] Stored None in app.state.champion_model during CI check")
+        logger.info("[startup] Stored None in app.state.champion_model_version during CI check")
+        
+    # Wait for api to shut down
+    yield  
+    # Cleanup after shutdown
+    print("[champ-store] App shutting down")
     app.state.champion_model = None
-    # Optionally TRAIN_CSR_STORE.csr = None
-    # or save to disk if needed
+    app.state.champion_model_version = None
 
 
 app = FastAPI(
@@ -113,11 +156,48 @@ app.include_router(rate_movie.router)
 
 
 @app.get("/health", tags=["System"])
-def health_check(db: Session = Depends(get_db)):
-    """
-    Lightweight health-check endpoint.
-    Verifies connectivity to both the database and MLflow server.
-    """
+def health():
+    '''
+    Lightweight health check to ensure api is running.
+    '''
+    return {"status": "ok"}
+
+
+@app.get("/health/full", tags=["System"])
+def health_advanced(db: Session = Depends(get_db)):
+    '''
+    Performs an extended health check for the API and its external dependencies.
+
+    This endpoint verifies that the application can communicate with the configured
+    database and the MLflow tracking server. It returns a structured JSON response
+    with the health status of each dependency and an overall HTTP status code:
+    200 if both services are available, otherwise 500.
+
+    Parameters
+    ----------
+    db : Session, optional
+        SQLAlchemy database session injected by FastAPI via dependency injection.
+        Used to execute a lightweight query in order to verify database connectivity.
+
+    Returns
+    -------
+    JSONResponse
+        A JSON response containing the health state of the database and MLflow
+        connection in the form:
+
+        {
+            "DB": {
+                "ok": bool,
+                "message": str
+            },
+            "MLflow": {
+                "ok": bool,
+                "message": str
+            }
+        }
+
+    The response status code is 200 if both checks succeed, otherwise 500.
+    '''
     # Define status vals and msgs
     db_status = False
     db_status_msg = ""

@@ -10,6 +10,32 @@ from src.db.database_session import get_db
 # Integration tests for /health
 # ____________________________________________________________________________________________________
 
+def test_health_access(client: TestClient):
+    """
+    Test that the health endpoint is reachable.
+    Asserts that /health returns 200 OK.
+    """
+    response = client.get(url="/health")
+    assert response.status_code == status.HTTP_200_OK
+    
+
+def test_health_types_and_vals(client: TestClient):
+    """
+    Test that the health endpoint returns the expected types and success values.
+    Assert that the type is str and values is "ok".
+    """
+    response = client.get(url="/health")
+
+    data = response.json()
+    status_ = data.get("status")
+
+    assert isinstance(status_, str)
+    assert status_ == "ok"
+
+
+# ____________________________________________________________________________________________________
+# Integration tests for /health/full
+# ____________________________________________________________________________________________________
 
 def test_health_endpoint_access(client: TestClient, monkeypatch):
     """
@@ -32,7 +58,7 @@ def test_health_endpoint_access(client: TestClient, monkeypatch):
     monkeypatch.setattr("requests.get", mock_requests_get)
 
     # Call endpoint
-    response = client.get(url="/health")
+    response = client.get(url="/health/full")
 
     # Verify response status code
     assert response.status_code == status.HTTP_200_OK
@@ -59,7 +85,7 @@ def test_health_endpoint_types_and_vals(client: TestClient, monkeypatch):
     monkeypatch.setattr("requests.get", mock_requests_get)
 
     # Call endpoint
-    response = client.get(url="/health")
+    response = client.get(url="/health/full")
 
     # Verify response status code
     assert response.status_code == status.HTTP_200_OK
@@ -137,7 +163,7 @@ def test_health_failure(client: TestClient, monkeypatch, variant, expected_statu
         monkeypatch.setattr("requests.get", mock_requests_get_failure)
 
     # Start request
-    response = client.get("/health")
+    response = client.get("/health/full")
 
     # Check if response status code is 500 Internal Server Error for all failure variants
     assert response.status_code == expected_status
@@ -147,3 +173,5 @@ def test_health_failure(client: TestClient, monkeypatch, variant, expected_statu
         app.dependency_overrides.pop(get_db, None)
     else:
         app.dependency_overrides[get_db] = original_get_db_override
+
+
