@@ -2,11 +2,7 @@ version: "3.9"
 
 services:
   mlflow:
-    build:
-      context: .
-      dockerfile: Dockerfile.mlflow
-      args:
-        MLFLOW_VERSION: "3.4.0"
+    image: eikosmid/movie-reco-mlflow:latest
     container_name: mlflow_server
     restart: "no"
     ports:
@@ -46,9 +42,7 @@ services:
 
 
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile.api
+    image: eikosmid/movie-reco-api:latest
     container_name: movie_rec_api
     depends_on: 
       postgres:
@@ -110,9 +104,7 @@ services:
 
   # Add streamlit
   streamlit:
-    build:
-      context: .
-      dockerfile: Dockerfile.streamlit
+    image: eikosmid/movie-reco-streamlit:latest
     container_name: streamlit_app
     depends_on:
       - api      
@@ -130,9 +122,7 @@ services:
 
   # Scheduled Trainer (daily retraining)
   trainer:
-    build:
-      context: .
-      dockerfile: Dockerfile.trainer
+    image: eikosmid/movie-reco-trainer:latest
     container_name: daily_trainer
     user: root
     depends_on:
