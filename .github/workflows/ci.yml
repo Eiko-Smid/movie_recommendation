@@ -10,28 +10,30 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      DOCKER_USERNAME: eikosmid
+
       # Define API vars
-      IMAGE_NAME_API: ${{ secrets.DOCKER_USERNAME }}/movie-reco-api:latest
+      IMAGE_NAME_API: ${{ env.DOCKER_USERNAME }}/movie-reco-api:latest
       # IMAGE_TAG_API: yourdockerhub/movie-reco-api:latest
       CONTAINER_NAME_API: movie-reco-api-ci
       HEALTH_ENDPOINT_API: http://localhost:8000/health
       API_SERVICE_TOKEN: test-service-token
 
       # Define Streamlit vars
-      IMAGE_NAME_STREAMLIT: ${{ secrets.DOCKER_USERNAME }}/movie-reco-streamlit:latest
+      IMAGE_NAME_STREAMLIT: ${{ env.DOCKER_USERNAME }}/movie-reco-streamlit:latest
       # IMAGE_TAG_STREAMLIT: yourdockerhub/movie-reco-streamlit:latest
       CONTAINER_NAME_STREAMLIT: movie-reco-streamlit-ci
       URL_STREAMLIT: http://localhost:8501
       INTERNAL_HEALTH_ENDPOINT_API: http://api:8000/health
 
       # Define trainer vars
-      IMAGE_NAME_TRAINER: ${{ secrets.DOCKER_USERNAME }}/movie-reco-trainer:latest
+      IMAGE_NAME_TRAINER: ${{ env.DOCKER_USERNAME }}/movie-reco-trainer:latest
       # IMAGE_TAG_TRAINER: yourdockerhub/movie-reco-trainer:latest
       CONTAINER_NAME_TRAINER: movie-reco-trainer-ci
       URL_TRAINER: http://localhost:8000/
       
       # Define mlflow vars
-      IMAGE_NAME_MLFLOW: ${{ secrets.DOCKER_USERNAME }}/movie-reco-mlflow:latest
+      IMAGE_NAME_MLFLOW: ${{ env.DOCKER_USERNAME }}/movie-reco-mlflow:latest
       # IMAGE_TAG_MLFLOW: yourdockerhub/movie-reco-mlflow:latest
       CONTAINER_NAME_MLFLOW: movie-reco-mlflow-ci
       URL_MLFLOW: http://localhost:5000 
