@@ -274,7 +274,7 @@ def check_user_author_or_service(
         None if authorized, otherwise raises HTTPException(403).
     '''
     # Get service token
-    SERVICE_TOKEN = os.getenv("API_SERVICE_TOKEN", None)
+    SERVICE_TOKEN = os.getenv("API_SERVICE_TOKEN", "test-service-token")
 
     # Check if keys exist
     if SERVICE_TOKEN and api_service_key:

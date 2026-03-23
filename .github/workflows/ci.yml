@@ -14,6 +14,7 @@ jobs:
       IMAGE_NAME_API: movie-reco-api:ci
       CONTAINER_NAME_API: movie-reco-api-ci
       HEALTH_ENDPOINT_API: http://localhost:8000/health
+      API_SERVICE_TOKEN: test-service-token
 
       # Define Streamlit vars
       IMAGE_NAME_STREAMLIT: movie-reco-streamlit:ci
