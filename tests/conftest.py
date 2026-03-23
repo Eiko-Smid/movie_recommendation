@@ -11,6 +11,7 @@ TEST_DATABASE_URL = "sqlite:///./test.db"
 os.environ["DB_URL"] = TEST_DATABASE_URL
 
 from src.api.main import app
+from src.api.app_state import AppState
 from src.db.database_session import Base, get_db
 from src.db.db_requests import get_user_id_offset, refresh_mv
 from tests.utils.db_test_movies import MOVIE_1, MOVIE_2, MOVIE_3
@@ -144,8 +145,9 @@ def client():
     app.dependency_overrides[get_user_id_offset] = override_user_id_offset
     app.dependency_overrides[refresh_mv] = override_refresh_mv
 
-    # Override app.state
-    app.state.champion_model_version = "test_version"
-    app.state.champion_model = DummyModel()
-
+    # Override app state
+    app.state.app_state = AppState(
+        champ_model=DummyModel(),   
+        champ_model_version="test_version"
+    )
     return TestClient(app)

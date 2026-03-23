@@ -23,6 +23,9 @@ import mlflow
 from src.api.routers import admin, auth, rate_movie, recommend, train
 from src.api.security import init_authorization
 
+# Import AppState
+from src.api.app_state import AppState
+
 # Import sql request code
 from src.db.database_session import get_db
 from src.models.management import (
@@ -42,44 +45,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-
-
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     """
-#     Lifespan handler: runs once at startup and once at shutdown.
-#     Ensures that the champ model and the corresponding train_csr matrix get's loaded
-#     when the API starts.
-#     """
-#     # Init the authorization
-#     init_authorization()
-
-#     # Load trained csr matrix
-#     TRAIN_CSR_STORE.load()
-#     logger.info("[startup] CSR loaded at startup")
-
-#     # Load global champ model
-#     logger.info(f"Model name is: {MODEL_NAME}")
-#     try:
-#         app.state.champion_model = mlflow.pyfunc.load_model(
-#             f"models:/{MODEL_NAME}@Champion"
-#         )
-#         app.state.champion_model_version = get_model_version(model_name=MODEL_NAME)
-#         logger.info("[startup] Stored champ model in app.state.champion_model")
-#         logger.info(
-#             "[startup] Stored champ model version in app.state.champion_model_version"
-#         )
-#     except Exception:
-#         app.state.champion_model = None
-#         app.state.champion_model_version = None
-#         logger.exception(
-#             "[startup] Failed to load champion model or champ model version from MLflow"
-#         )
-
-#     yield  # app runs while yielded
-#     print("[champ-store] App shutting down")  # optional cleanup
-#     app.state.champion_model = None
-#     app.state.champion_model_version = None
 
 
 @asynccontextmanager
@@ -104,37 +69,45 @@ async def lifespan(app: FastAPI):
         # Load global champ model
         logger.info(f"Model name is: {MODEL_NAME}")
         try:
-            app.state.champion_model = mlflow.pyfunc.load_model(
+            # Load current champ model and model version from mlflow and store in app state
+            champ_model = mlflow.pyfunc.load_model(
                 f"models:/{MODEL_NAME}@Champion"
             )
-            app.state.champion_model_version = get_model_version(model_name=MODEL_NAME)
-            logger.info("[startup] Stored champ model in app.state.champion_model")
-            logger.info(
-                "[startup] Stored champ model version in app.state.champion_model_version"
+            champ_model_version = get_model_version(model_name=MODEL_NAME)
+            app.state.app_state = AppState(
+                champ_model=champ_model,
+                champ_model_version=champ_model_version
             )
+            logger.info("[startup] Stored champ model and version in app.state.app_state")
         except Exception as e:
-            app.state.champion_model = None
-            app.state.champion_model_version = None
+            # Init with None if error occurs during loading
+            app.state.app_state = AppState(
+                champ_model=None,
+                champ_model_version=None
+            )
             logger.exception(
                 "[startup] Failed to load champion model or champ model version from MLflow"
             )
             raise e
     else:
-        # Load global champ model
+        # Init app.state with None values during CI check, as we don't have a model or a model version during check
         logger.info("[startup] CSR not loaded during CI check")
         logger.info("Model name is: Test_Model_CI_check")
-
-        app.state.champion_model = None
-        app.state.champion_model_version = None
-        logger.info("[startup] Stored None in app.state.champion_model during CI check")
-        logger.info("[startup] Stored None in app.state.champion_model_version during CI check")
+        app.state.app_state = AppState(
+            champ_model=None,
+            champ_model_version=None
+        )
+        logger.info("[startup] Stored None in app.state.app_state during CI check")
+        logger.info("[startup] Stored None in app.state.app_state.champ_model_version during CI check")
         
     # Wait for api to shut down
     yield  
     # Cleanup after shutdown
     print("[champ-store] App shutting down")
-    app.state.champion_model = None
-    app.state.champion_model_version = None
+    app.state.app_state = AppState(
+        champ_model=None,
+        champ_model_version=None
+    )
 
 
 app = FastAPI(

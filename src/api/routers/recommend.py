@@ -92,7 +92,7 @@ def recommend_movie_current_user(
 
     # Track if recommendation could be computed without errors
     MODEL_SERVED_TOTAL.labels(
-        model_version=request.app.state.champion_model_version
+        model_version=request.app.state.app_state.champ_model_version
     ).inc()
 
     return RecommendResponse(
