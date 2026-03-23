@@ -2,7 +2,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, HTTPException, Security, status, Header
+from fastapi import Depends, Header, HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
