@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   mlflow:
-    image: ${DOCKER_USERNAME}/movie-reco-mlflow:${APP_VERSION}
+    image: ${DOCKER_USERNAME}/movie-reco-mlflow:latest
     restart: "no"
     ports:
       - "5000:5000"
@@ -40,7 +40,7 @@ services:
 
 
   api:
-    image: ${DOCKER_USERNAME}/movie-reco-api:${APP_VERSION}
+    image: ${DOCKER_USERNAME}/movie-reco-api:latest
     depends_on: 
       postgres:
             # Waits with start until db is set up
@@ -99,7 +99,7 @@ services:
 
   # Add streamlit
   streamlit:
-    image: ${DOCKER_USERNAME}/movie-reco-streamlit:${APP_VERSION}
+    image: ${DOCKER_USERNAME}/movie-reco-streamlit:latest
     depends_on:
       - api      
     ports:
@@ -116,7 +116,7 @@ services:
 
   # Scheduled Trainer (daily retraining)
   trainer:
-    image: ${DOCKER_USERNAME}/movie-reco-trainer:${APP_VERSION}
+    image: ${DOCKER_USERNAME}/movie-reco-trainer:latest
     user: root
     depends_on:
       api:

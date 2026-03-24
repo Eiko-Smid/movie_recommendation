@@ -245,15 +245,29 @@ jobs:
       run: |
         VERSION=${GITHUB_REF_NAME}
 
+        # Tag images with current version
         docker tag $IMAGE_NAME_MLFLOW ${DOCKER_USERNAME}/movie-reco-mlflow:$VERSION
         docker tag $IMAGE_NAME_API ${DOCKER_USERNAME}/movie-reco-api:$VERSION
         docker tag $IMAGE_NAME_STREAMLIT ${DOCKER_USERNAME}/movie-reco-streamlit:$VERSION
         docker tag $IMAGE_NAME_TRAINER ${DOCKER_USERNAME}/movie-reco-trainer:$VERSION
+
+        # Tag images with latest tag
+        docker tag $IMAGE_NAME_MLFLOW ${DOCKER_USERNAME}/movie-reco-mlflow:latest
+        docker tag $IMAGE_NAME_API ${DOCKER_USERNAME}/movie-reco-api:latest
+        docker tag $IMAGE_NAME_STREAMLIT ${DOCKER_USERNAME}/movie-reco-streamlit:latest
+        docker tag $IMAGE_NAME_TRAINER ${DOCKER_USERNAME}/movie-reco-trainer:latest
         
+        # push version tagged images
         docker push ${DOCKER_USERNAME}/movie-reco-mlflow:$VERSION
         docker push ${DOCKER_USERNAME}/movie-reco-api:$VERSION
         docker push ${DOCKER_USERNAME}/movie-reco-streamlit:$VERSION
         docker push ${DOCKER_USERNAME}/movie-reco-trainer:$VERSION
+
+        # push latest tagged images
+        docker push ${DOCKER_USERNAME}/movie-reco-mlflow:latest
+        docker push ${DOCKER_USERNAME}/movie-reco-api:latest
+        docker push ${DOCKER_USERNAME}/movie-reco-streamlit:latest
+        docker push ${DOCKER_USERNAME}/movie-reco-trainer:latest
         
     - name: Cleanup containers and network
       if: always()
@@ -277,17 +291,13 @@ jobs:
 
     steps:
       - name: Deploy via Docker Compose
-        shell: powershell
+        shell: bash
         run: |
           # CD into project directory on server
-          cd C:\Users\smide\Work\Deployment\Movie_recommendation_system
+          cd /c/Users/smide/Work/Deployment/Movie_recommendation_system
 
           # Pull latest changes
           git pull origin master
-
-          # Delete old app version and add new app version to env
-          (Get-Content .env) | Where-Object {$_ -notmatch 'APP_VERSION'} | Set-Content .env
-          "APP_VERSION=$env:GITHUB_REF_NAME" | Out-File -FilePath .env -Append
 
           # Pull newest changes and restart containers
           docker compose up -d --pull always
