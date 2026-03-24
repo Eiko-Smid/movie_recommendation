@@ -2,30 +2,53 @@ name: CI Pipeline
 
 on:
   push:
-    branches: 
+    branches: [master, develop]
+    tags: 
+      - 'v*'  # Trigger on version tags like v1.0.0
   pull_request:
+    branches: [master, develop]
 
 jobs:
+  # _______________________________________________________________________________________________
+  # Define first job: Start env, lint, test code, build/run/test container and push to DockerHub 
+  # _______________________________________________________________________________________________
+
   build-and-test:
     runs-on: ubuntu-latest
-
+    # _______________________________________________________________________________________________
+    # Define env vars
+    # _______________________________________________________________________________________________
     env:
+      # Define mlflow vars
+      IMAGE_NAME_MLFLOW: ${{ secrets.DOCKER_USERNAME }}/movie-reco-mlflow:latest
+      # IMAGE_TAG_MLFLOW: yourdockerhub/movie-reco-mlflow:latest
+      CONTAINER_NAME_MLFLOW: movie-reco-mlflow-ci
+      URL_MLFLOW: http://localhost:5000 
+
       # Define API vars
-      IMAGE_NAME_API: movie-reco-api:ci
+      IMAGE_NAME_API: ${{ secrets.DOCKER_USERNAME }}/movie-reco-api:latest
+      # IMAGE_TAG_API: yourdockerhub/movie-reco-api:latest
       CONTAINER_NAME_API: movie-reco-api-ci
       HEALTH_ENDPOINT_API: http://localhost:8000/health
+      API_SERVICE_TOKEN: test-service-token
 
       # Define Streamlit vars
-      IMAGE_NAME_STREAMLIT: movie-reco-streamlit:ci
+      IMAGE_NAME_STREAMLIT: ${{ secrets.DOCKER_USERNAME }}/movie-reco-streamlit:latest
+      # IMAGE_TAG_STREAMLIT: yourdockerhub/movie-reco-streamlit:latest
       CONTAINER_NAME_STREAMLIT: movie-reco-streamlit-ci
       URL_STREAMLIT: http://localhost:8501
       INTERNAL_HEALTH_ENDPOINT_API: http://api:8000/health
 
       # Define trainer vars
-      IMAGE_NAME_TRAINER: movie-reco-trainer:ci
+      IMAGE_NAME_TRAINER: ${{ secrets.DOCKER_USERNAME }}/movie-reco-trainer:latest
+      # IMAGE_TAG_TRAINER: yourdockerhub/movie-reco-trainer:latest
       CONTAINER_NAME_TRAINER: movie-reco-trainer-ci
       URL_TRAINER: http://localhost:8000/
-      
+
+      # Define Username (can't be use with $ or {.envUSERNAME} above but later useable when we
+      # Tag the images with the version tag before pushing to dockerhub)
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+
       # Define DB vars
       DB_URL: sqlite:///./test.db
       
@@ -35,6 +58,9 @@ jobs:
       # Define testing vars
       TESTING: "true"
 
+    # _______________________________________________________________________________________________
+    # Define steps
+    # _______________________________________________________________________________________________
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -62,6 +88,7 @@ jobs:
 
     - name: Build Docker Images
       run: |
+        docker build -f Dockerfile.mlflow -t $IMAGE_NAME_MLFLOW .
         docker build -f Dockerfile.api -t $IMAGE_NAME_API .
         docker build -f Dockerfile.streamlit -t $IMAGE_NAME_STREAMLIT .
         docker build -f Dockerfile.trainer -t $IMAGE_NAME_TRAINER .
@@ -70,6 +97,18 @@ jobs:
       run: |
         docker network rm $NETWORK_NAME 2>/dev/null || true
         docker network create $NETWORK_NAME
+
+    - name: Run MLflow Container
+      run: |
+        echo "Remove old MLflow Container if exists."
+        docker rm -f $CONTAINER_NAME_MLFLOW 2>/dev/null || true
+
+        echo "Run MLflow Container"
+        docker run -d \
+          --name $CONTAINER_NAME_MLFLOW \
+          --network $NETWORK_NAME \
+          -p 5000:5000 \
+          $IMAGE_NAME_MLFLOW
 
     - name: Run API Container
       run: |
@@ -111,6 +150,23 @@ jobs:
           -e DB_URL="$DB_URL" \
           -e API_URL="http://api:8000" \
           $IMAGE_NAME_TRAINER
+
+    - name: Test mlflow container
+      run: |
+        for i in {1..10}; do
+          if curl -s $URL_MLFLOW; then
+            echo "MLflow server started and reachable!"
+            exit 0
+          fi
+          echo "Waiting for MLflow server..."
+          sleep 2
+        done
+
+        echo "MLflow server did not start in time"
+        echo "Logs:"
+        docker logs $CONTAINER_NAME_MLFLOW
+
+        exit 1
 
     - name: Test API container
       run: |
@@ -179,11 +235,57 @@ jobs:
 
         exit 1
 
+    - name: Login to Docker Hub
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        echo ${{ secrets.DOCKER_PASSWORD }} | docker login -u ${{ secrets.DOCKER_EMAIL }} --password-stdin
+
+    - name: Tag and push images to Docker Hub
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        VERSION=${GITHUB_REF_NAME}
+
+        docker tag $IMAGE_NAME_MLFLOW ${DOCKER_USERNAME}/movie-reco-mlflow:$VERSION
+        docker tag $IMAGE_NAME_API ${DOCKER_USERNAME}/movie-reco-api:$VERSION
+        docker tag $IMAGE_NAME_STREAMLIT ${DOCKER_USERNAME}/movie-reco-streamlit:$VERSION
+        docker tag $IMAGE_NAME_TRAINER ${DOCKER_USERNAME}/movie-reco-trainer:$VERSION
+        
+        docker push ${DOCKER_USERNAME}/movie-reco-mlflow:$VERSION
+        docker push ${DOCKER_USERNAME}/movie-reco-api:$VERSION
+        docker push ${DOCKER_USERNAME}/movie-reco-streamlit:$VERSION
+        docker push ${DOCKER_USERNAME}/movie-reco-trainer:$VERSION
+        
     - name: Cleanup containers and network
       if: always()
       run: |
+        docker stop $CONTAINER_NAME_MLFLOW 2>/dev/null || true
         docker stop $CONTAINER_NAME_API 2>/dev/null || true
         docker stop $CONTAINER_NAME_STREAMLIT 2>/dev/null || true
+        docker stop $CONTAINER_NAME_TRAINER 2>/dev/null || true
         docker rm -f $CONTAINER_NAME_API $CONTAINER_NAME_STREAMLIT 2>/dev/null || true
+        docker rm -f $CONTAINER_NAME_MLFLOW $CONTAINER_NAME_TRAINER 2>/dev/null || true
         docker network rm $NETWORK_NAME 2>/dev/null || true
-      
+  
+  # _______________________________________________________________________________________________
+  # Define second job: Deploy system on server
+  # _______________________________________________________________________________________________
+
+  deploy:
+    runs-on: self-hosted
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Deploy via Docker Compose
+        shell: powershell
+        run: |
+          cd C:\Users\smide\Work\Deployment\Movie_recommendation_system
+
+          # Delete old app version var
+          (Get-Content .env) | Where-Object {$_ -notmatch 'APP_VERSION'} | Set-Content .env
+
+          # Add new app version to env
+          "APP_VERSION=$env:GITHUB_REF_NAME" | Out-File -FilePath .env -Append
+
+          # Pull newest changes and restart containers
+          docker compose up -d --pull always

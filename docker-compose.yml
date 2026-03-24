@@ -1,10 +1,8 @@
+version: "3.9"
+
 services:
   mlflow:
-    build:
-      context: .
-      dockerfile: Dockerfile.mlflow
-      args:
-        MLFLOW_VERSION: "3.4.0"
+    image: ${DOCKER_USERNAME}/movie-reco-mlflow:${APP_VERSION}
     container_name: mlflow_server
     restart: "no"
     ports:
@@ -44,9 +42,7 @@ services:
 
 
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile.api
+    image: ${DOCKER_USERNAME}/movie-reco-api:${APP_VERSION}
     container_name: movie_rec_api
     depends_on: 
       postgres:
@@ -108,9 +104,7 @@ services:
 
   # Add streamlit
   streamlit:
-    build:
-      context: .
-      dockerfile: Dockerfile.streamlit
+    image: ${DOCKER_USERNAME}/movie-reco-streamlit:${APP_VERSION}
     container_name: streamlit_app
     depends_on:
       - api      
@@ -127,26 +121,19 @@ services:
 
 
   # Scheduled Trainer (daily retraining)
-  # Training can be manually started with: docker exec -it daily_trainer sh -c "curl -X POST http://api:8000/train -H 'Content-Type: application/json' -d @/data/train_payload.json
   trainer:
-    build:
-      context: .
-      dockerfile: Dockerfile.trainer
+    image: ${DOCKER_USERNAME}/movie-reco-trainer:${APP_VERSION}
     container_name: daily_trainer
     user: root
     depends_on:
       api:
         condition: service_started
-    command: >
-      sh -c "
-        echo \"55 1 * * * echo \\\"\$(date '+%Y-%m-%d %H:%M:%S') - Refreshing mv...\\\" >> /var/log/cron.log && curl -X POST http://api:8000/refresh-mv >> /var/log/cron.log 2>&1\" > /etc/crontabs/root &&
-        echo \"0 2 * * * echo \\\"\$(date '+%Y-%m-%d %H:%M:%S') - Starting training...\\\" >> /var/log/cron.log && curl -X POST http://api:8000/train -H 'Content-Type: application/json' -d @/data/train_payload.json >> /var/log/cron.log 2>&1\" >> /etc/crontabs/root &&
-        echo 'Cron job scheduled' &&
-        crond -f -l 2
-      "
+    environment:
+      API_SERVICE_TOKEN: ${API_SERVICE_TOKEN}
     volumes:
       - ./logs:/var/log
-      - ./train_payload.json:/data/train_payload.json:ro
+      - ./trainer_utils:/app/trainer_utils
+      # - ./trainer_utils/train_payload.json:/data/train_payload.json:ro
 
 
 # Define storage locations handled by docker

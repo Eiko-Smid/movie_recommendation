@@ -11,7 +11,7 @@ from src.api.schemas import (
     TrainRequest,
     TrainResponse,
 )
-from src.api.security import check_user_authorization
+from src.api.security import check_user_author_or_service, check_user_authorization
 from src.db.database_session import ENGINE
 from src.db.db_requests import (
     MV_NAME,
@@ -168,7 +168,7 @@ def refresh_mv_endpoint(
 def train_endpoint(
     request: Request,
     train_param: TrainRequest,
-    _: User = Depends(check_user_authorization(UserRole.ADMIN, UserRole.DEVELOPER)),
+    _: bool = Depends(check_user_author_or_service),
 ):
     """
     Trains or updates the ALS recommendation model using the provided training parameters.
@@ -194,7 +194,6 @@ def train_endpoint(
         Object containing the best hyperparameters 'best_param' and corresponding evaluation
         metrics 'best_metrics' from the training run.
     """
-
     # Load data
     df_ratings, df_movies = _load_data(train_param=train_param)
 

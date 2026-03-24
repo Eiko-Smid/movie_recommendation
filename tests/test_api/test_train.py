@@ -1,3 +1,5 @@
+import os
+import logging
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
@@ -10,10 +12,11 @@ from tests.utils.get_authentication_head import (
     get_user_auth_head,
 )
 
+logger = logging.getLogger(__name__)
+
 # ____________________________________________________________________________________________________
 # Integration tests for /train/refresh-mv endpoint
 # ____________________________________________________________________________________________________
-
 
 @pytest.mark.parametrize(
     "role, expected_status",
@@ -90,12 +93,11 @@ def test_refresh_mv_inactive_admin(client: TestClient):
 # Integration tests for /train/train_model endpoint
 # ____________________________________________________________________________________________________
 
-
 @pytest.mark.parametrize(
     "role, expected_status",
     [
         (UserRole.ADMIN, status.HTTP_422_UNPROCESSABLE_CONTENT),
-        (UserRole.DEVELOPER, status.HTTP_422_UNPROCESSABLE_CONTENT),
+        (UserRole.DEVELOPER, status.HTTP_403_FORBIDDEN),
         (UserRole.USER, status.HTTP_403_FORBIDDEN),
     ],
 )
@@ -137,4 +139,22 @@ def test_train_model_inactive_admin(client: TestClient):
     )
 
     # Check if access is forbidden for inactive admin user
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.parametrize(
+    "service_token, expected_status",
+    [
+        (os.getenv("API_SERVICE_TOKEN", None), status.HTTP_422_UNPROCESSABLE_CONTENT),
+        ("invalid_service_token", status.HTTP_403_FORBIDDEN),
+    ]
+)
+def test_train_model_service_token(client: TestClient, service_token, expected_status):
+    
+    logging.info(f"Current token is: {service_token}")
+    response = client.post(
+        url="/train/train_model",
+        headers={"api-service-key": service_token},
+    )   
+
+    assert response.status_code == expected_status

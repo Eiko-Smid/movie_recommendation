@@ -78,9 +78,10 @@ class Model_State:
 
 def get_champion_model(request: Request):
     """
-    Reads the current champion model from the api app.state.
+    Reads the current champion model from the api app.state.app_state.
     """
-    model = getattr(request.app.state, "champion_model", None)
+    app_state = getattr(request.app.state, "app_state", None)
+    model = getattr(app_state, "champ_model", None) if app_state else None
     if model is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -445,12 +446,15 @@ def update_champ_model(app: FastAPI, new_version: str, best_weighted_csr: csr_ma
     TRAIN_CSR_STORE.save(best_weighted_csr)
 
     # Load the new champ model
-    app.state.champion_model = mlflow.pyfunc.load_model(
+    # Update AppState in app.state.app_state
+    champ_model = mlflow.pyfunc.load_model(
         f"models:/{MODEL_NAME}@Champion"
     )
-
-    # Define app state model version var to track current model version.
-    app.state.champion_model_version = new_version
+    if not hasattr(app.state, "app_state") or app.state.app_state is None:
+        from src.api.app_state import AppState
+        app.state.app_state = AppState()
+    app.state.app_state.champ_model = champ_model
+    app.state.app_state.champ_model_version = new_version
 
 
 class ALSRecommenderPyFunc(PythonModel):

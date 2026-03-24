@@ -9,7 +9,9 @@ from src.api.schemas import (
     RecommendMovieCurrentUserRequest,
     RecommendResponse,
 )
-from src.api.security import check_user_authorization
+from src.api.security import (
+    check_user_authorization,
+)
 from src.db.db_requests import get_user_id_offset
 from src.db.models.users import User
 from src.models.management import get_champion_model
@@ -92,7 +94,7 @@ def recommend_movie_current_user(
 
     # Track if recommendation could be computed without errors
     MODEL_SERVED_TOTAL.labels(
-        model_version=request.app.state.champion_model_version
+        model_version=request.app.state.app_state.champ_model_version
     ).inc()
 
     return RecommendResponse(

@@ -97,7 +97,7 @@ def test_recommend_movie_for_current_user_champion_model_not_loaded(
     503 Service Unavailable error when the champion model is not loaded.
     """
     # Override champion model dependency to simulate champion model not loaded
-    client.app.state.champion_model = None
+    client.app.state.app_state.champ_model = None
 
     # Get header for user role
     header = get_user_auth_head(client)
@@ -252,7 +252,7 @@ def test_recommend_movie_by_id_champion_model_not_loaded(client: TestClient) -> 
     503 Service Unavailable error when the champion model is not loaded.
     """
     # Override champion model dependency to simulate champion model not loaded
-    client.app.state.champion_model = None
+    client.app.state.app_state.champ_model = None
 
     # Get header for an allowed role
     header = get_admin_auth_head(client)

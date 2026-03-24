@@ -2,7 +2,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, Header, HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -20,7 +20,7 @@ JWT_SECRET = os.getenv("JWT_SECRET", "change-me")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MIN = int(os.getenv("ACCESS_TOKEN_EXPIRE_MIN", "30"))
 
-oauth_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+oauth_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token", auto_error=False)
 
 
 def hash_password(pwd: str) -> str:
@@ -192,6 +192,103 @@ def check_user_authorization(*allowed_roles: UserRole):
         return current_user
 
     return _checker
+
+
+def get_current_user_optional(
+    token: str = Depends(oauth_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    if not token:
+        return None
+
+    try:
+        payload = decode_token(token=token)
+        email = payload.get("sub")
+    except JWTError:
+        return None
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not user.is_active:
+        return None
+
+    return user
+
+
+def get_current_user_optional_v2(
+    token: str = Security(oauth_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """
+    Gets a jwt access token and a db session object. First it decodes the given access token.
+    If the extracted email is part of the DB, then the function returns the user information.
+    This function will not fail if no token is provided or if the token is invalid. Instead, 
+    it will return None in those cases.
+
+    Parameters
+    ----------
+    token: str
+        JWT access token.
+    db: Session
+        A DB session object to access the DB trough SQLalchemy.
+    
+    Returns
+    ----------
+    user : User | None
+        A User object containing the user information that correspondes to the
+        given toke, if found. Else None.
+    """
+
+    if not token:
+        return None
+
+    try:
+        payload = decode_token(token=token)
+        email = payload.get("sub")
+    except JWTError:
+        return None
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not user.is_active:
+        return None
+
+    return user
+
+
+def check_user_author_or_service(
+    api_service_key: str = Header(None),
+    user: User | None = Depends(get_current_user_optional)
+):
+    '''
+    Checks if the request is authorized either by a valid API service token 
+    or by a valid user token with admin role.
+
+    Parameters
+    ----------
+    api_service_key: str
+        The API service token provided in the request header.
+    user: User | None
+        The current authenticated user, if a valid user token is provided. Otherwise None.
+    
+    Returns
+    -------
+        None if authorized, otherwise raises HTTPException(403).
+    '''
+    # Get service token
+    SERVICE_TOKEN = os.getenv("API_SERVICE_TOKEN", "test-service-token")
+
+    # Check if keys exist
+    if SERVICE_TOKEN and api_service_key:
+        # Check if token valid
+        if api_service_key == SERVICE_TOKEN:
+            return
+    
+    # Check if user exists
+    if user is None or user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient permission."
+        )
+    return
 
 
 def init_authorization():
