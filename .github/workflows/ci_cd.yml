@@ -269,7 +269,7 @@ jobs:
   # _______________________________________________________________________________________________
   # Define second job: Deploy system on server
   # _______________________________________________________________________________________________
-
+  
   deploy:
     runs-on: self-hosted
     needs: build-and-test
@@ -279,12 +279,14 @@ jobs:
       - name: Deploy via Docker Compose
         shell: powershell
         run: |
+          # CD into project directory on server
           cd C:\Users\smide\Work\Deployment\Movie_recommendation_system
 
-          # Delete old app version var
-          (Get-Content .env) | Where-Object {$_ -notmatch 'APP_VERSION'} | Set-Content .env
+          # Pull latest changes
+          git pull origin master
 
-          # Add new app version to env
+          # Delete old app version and add new app version to env
+          (Get-Content .env) | Where-Object {$_ -notmatch 'APP_VERSION'} | Set-Content .env
           "APP_VERSION=$env:GITHUB_REF_NAME" | Out-File -FilePath .env -Append
 
           # Pull newest changes and restart containers
