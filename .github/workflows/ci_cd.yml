@@ -291,10 +291,10 @@ jobs:
 
     steps:
       - name: Deploy via Docker Compose
-        shell: bash
+        shell: cmd
         run: |
           # CD into project directory on server
-          cd /c/Users/smide/Work/Deployment/Movie_recommendation_system
+          cd C:\Users\smide\Work\Deployment\Movie_recommendation_system
 
           # Pull latest changes
           git pull origin master
