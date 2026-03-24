@@ -20,6 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import mlflow
+from mlflow.exceptions import RestException
 
 # Import AppState
 from src.api.app_state import AppState
@@ -79,16 +80,19 @@ async def lifespan(app: FastAPI):
                 champ_model_version=champ_model_version
             )
             logger.info("[startup] Stored champ model and version in app.state.app_state")
-        except Exception as e:
-            # Init with None if error occurs during loading
+        
+        # Accept if model is empty at start time.
+        except RestException as e:
+            # expected case: no Champion yet
+            logger.warning("[startup] No Champion model found in MLflow yet")            
             app.state.app_state = AppState(
                 champ_model=None,
                 champ_model_version=None
             )
-            logger.exception(
-                "[startup] Failed to load champion model or champ model version from MLflow"
-            )
-            raise e
+        # handle real rpoblem
+        except Exception as e:
+            logger.error("[startup] Critical error while loading model")
+            raise e  
     else:
         # Init app.state with None values during CI check, as we don't have a model or a model version during check
         logger.info("[startup] CSR not loaded during CI check")
@@ -108,6 +112,7 @@ async def lifespan(app: FastAPI):
         champ_model=None,
         champ_model_version=None
     )
+
 
 
 app = FastAPI(

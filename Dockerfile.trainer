@@ -14,4 +14,4 @@ COPY trainer_utils/ /app/trainer_utils/
 RUN chmod +x /app/trainer_utils/*.sh
 
 # Default command → start cron setup script
-CMD ["/app/trainer_utils/run_training.sh"]
+CMD ["sh", "/app/trainer_utils/run_training.sh"]
