@@ -15,12 +15,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.responses import JSONResponse, Response
+from mlflow.exceptions import RestException
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import mlflow
-from mlflow.exceptions import RestException
 
 # Import AppState
 from src.api.app_state import AppState
@@ -84,7 +84,7 @@ async def lifespan(app: FastAPI):
         # Accept if model is empty at start time.
         except RestException as e:
             # expected case: no Champion yet
-            logger.warning("[startup] No Champion model found in MLflow yet")            
+            logger.warning(f"[startup] No Champion model found in MLflow yet.\nDetails:\n{e}")
             app.state.app_state = AppState(
                 champ_model=None,
                 champ_model_version=None

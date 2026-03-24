@@ -3,7 +3,6 @@ version: "3.9"
 services:
   mlflow:
     image: ${DOCKER_USERNAME}/movie-reco-mlflow:${APP_VERSION}
-    container_name: mlflow_server
     restart: "no"
     ports:
       - "5000:5000"
@@ -15,7 +14,6 @@ services:
 # PostgreSQL Database
   postgres:
     image: postgres:16
-    container_name: postgres_db
     restart: "no"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -43,7 +41,6 @@ services:
 
   api:
     image: ${DOCKER_USERNAME}/movie-reco-api:${APP_VERSION}
-    container_name: movie_rec_api
     depends_on: 
       postgres:
             # Waits with start until db is set up
@@ -74,7 +71,6 @@ services:
 # Add Prometheus
   prometheus:
     image: prom/prometheus:v3.10.0
-    container_name: prometheus_movie_rec
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_storage:/prometheus
@@ -87,7 +83,6 @@ services:
 # Add Grafana
   grafana:
     image: grafana/grafana:12.4.0
-    container_name: grafana_movie_rec
     ports:
       - "3000:3000"
     environment:
@@ -105,7 +100,6 @@ services:
   # Add streamlit
   streamlit:
     image: ${DOCKER_USERNAME}/movie-reco-streamlit:${APP_VERSION}
-    container_name: streamlit_app
     depends_on:
       - api      
     ports:
@@ -123,7 +117,6 @@ services:
   # Scheduled Trainer (daily retraining)
   trainer:
     image: ${DOCKER_USERNAME}/movie-reco-trainer:${APP_VERSION}
-    container_name: daily_trainer
     user: root
     depends_on:
       api:
