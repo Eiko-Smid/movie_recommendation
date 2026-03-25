@@ -43,7 +43,7 @@ where \( U \) encodes user latent features and \( V \) encodes item latent featu
 
 # Architecture and Pipeline
 
-![Pipeline Flowchart](streamlit/utils/pipeline_refresh.svg)
+![Pipeline Flowchart](streamlit/utils/pipeline_refresh_v3.svg)
 
 The project is realized as a multi-container app. It consists of 5 Docker containers which are defined and configured with a docker-compose. The 5 containers are:
 - **postgres_db:** Contains the database with the data needed to train the model. The data originates from the Movielens Database. It is used by the streamlit_app and the movie_rec_api container to provide their services.
