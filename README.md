@@ -1,24 +1,23 @@
 # Movie Recommendation Project
 
 ## Description
-________________________________________________________________________________________________________________
+
 This project is a **production-ready movie recommendation system** that provides movie recommendations to users based 
-on other user preferences (**collaborative filtering**). After registration the user is able to rate movies and receive recommendations. Even without any prior ratings, the system is able to generate meaningful initial
-recommendations through a **cold-start strategy**.
+on other user preferences (**collaborative filtering**). After registration the user is able to rate movies and receive
+recommendations. Even without any prior ratings, the system is able to generate meaningful initial recommendations through
+a **cold-start strategy**.
 
 
 ## Features
-________________________________________________________________________________________________________________
 
 The system is driven by a robust **MLOps pipeline** including the following features:
 - **Streamlit frontend application** for system interaction and project presentation
 - Real-time movie recommendations served via a **FastAPI-based API**
 - Secured API using **JWT Authentication** and **Role-Based Access Control (RBAC)**
 - Automated **model training and evaluation pipeline** with **MLflow**, ensuring that the best-performing model is deployed to production.
-- **Monitoring** with **Prometheus** und **Grafana** to ensure model performance and system reliability 
+- **Monitoring** with **Prometheus** and **Grafana** to ensure model quality and system reliability 
 - **CI pipeline** powered by **GitHUb Workflow**, including code linting/testing, container building/testing and pushing images to **DockerHub**
-- **CD** pipeline that deploys the system on an predefined server, whenever a new software Release is created.
-
+- **CD pipeline** that deploys the system on a predefined server, whenever a new software Release is created.
 
 
 ## System Architecture
@@ -26,9 +25,8 @@ The system is driven by a robust **MLOps pipeline** including the following feat
 ![C4 Level 2: Container Architecture](streamlit/utils/Level_2_container_flowchart.svg)
 
 ### Short explanation
-_______________________________________________________________________________________________________________________
 The system follows a container-based architecture powered by **Docker**. Interactions with the system are served by the
-**Streamlit frontend**. This includes registration/login, rating movies and user specific movie recommendations. All 
+**Streamlit frontend**. This includes registration/login, rating movies and user-specific movie recommendations. All 
 interactions are routed through the **FastAPI** backend which acts as the central component handling: 
 
 - authentication/authorization
@@ -105,14 +103,14 @@ docker compose up -d
 
 ### 4. Start Streamlit Application
 
-Attention: Wait a bit (10-15 minutes) for DB setup. If failure happens, then likely because DB setup not finished!
-
 Open http://localhost:8501/ in browser. Refrsh site once with "Strg + F5" -> Correct format shown
 
 For API interaction go to page: "API Interaction"
 
 Here u can register, login and then access the endpoint for "ACCESS_TOKEN_EXPIRE_MINUTES". After that logout and 
 log in again. 
+
+Note: Initial database setup may take several minutes.
 
 
 # Project Structure
