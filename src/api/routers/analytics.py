@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, status, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from src.db.database_session import get_db
 
@@ -143,7 +143,7 @@ def get_ratings_head(
         list[dict]: List of rating records
     """
 
-    query = text(f"""
+    query = text("""
         SELECT "userId", "movieId", rating, timestamp
         FROM ratings
         LIMIT :n
@@ -173,7 +173,7 @@ def get_movies_head(
         list[dict]: List of movie records
     """
 
-    query = text(f"""
+    query = text("""
         SELECT "movieId", title, genres
         FROM movies
         LIMIT :n

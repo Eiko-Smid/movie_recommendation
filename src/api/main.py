@@ -24,7 +24,7 @@ import mlflow
 
 # Import AppState
 from src.api.app_state import AppState
-from src.api.routers import admin, auth, rate_movie, recommend, train, analytics
+from src.api.routers import admin, analytics, auth, rate_movie, recommend, train
 from src.api.security import init_authorization
 
 # Import sql request code
