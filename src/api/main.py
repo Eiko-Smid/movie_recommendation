@@ -24,7 +24,7 @@ import mlflow
 
 # Import AppState
 from src.api.app_state import AppState
-from src.api.routers import admin, auth, rate_movie, recommend, train
+from src.api.routers import admin, analytics, auth, rate_movie, recommend, train
 from src.api.security import init_authorization
 
 # Import sql request code
@@ -131,6 +131,7 @@ app.include_router(admin.router)
 app.include_router(train.router)
 app.include_router(recommend.router)
 app.include_router(rate_movie.router)
+app.include_router(analytics.router)
 
 
 @app.get("/health", tags=["System"])
